@@ -13,7 +13,7 @@ class PEState:
 def init(controll_port):
     with PEState.PathLock:
         if not PEState.shutdown:
-            TCAL.init(controll_port)
+            TCAL.init()
 
 
 def initialize_path(path):
