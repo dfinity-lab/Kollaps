@@ -52,7 +52,6 @@ def main():
 
     print("Initializing network emulation...")
     manager = EmulationManager(graph)
-    manager.initialize()
     print("Waiting for command to start experiment")
     sys.stdout.flush()
     sys.stderr.flush()

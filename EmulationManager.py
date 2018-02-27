@@ -23,14 +23,6 @@ class EmulationManager:
         self.comms = CommunicationsManager(self.collect_flow, self.graph)
         self.last_time = 0
 
-    def initialize(self):
-        PathEmulation.init(CommunicationsManager.UDP_PORT)
-        for service in self.graph.paths:
-            if isinstance(service, NetGraph.Service):
-                path = self.graph.paths[service]
-                PathEmulation.initialize_path(path)
-
-
     def emulation_loop(self):
         self.last_time = time()
         self.check_active_flows()  # to prevent bug where data has already passed through the filters before

@@ -170,5 +170,10 @@ class CommunicationsManager:
                 elif command == CommunicationsManager.START_COMMAND:
                     connection.close()
                     print("Starting Experiment!")
+                    PathEmulation.init(CommunicationsManager.UDP_PORT)
+                    for service in self.graph.paths:
+                        if isinstance(service, NetGraph.Service):
+                            path = self.graph.paths[service]
+                            PathEmulation.initialize_path(path)
                     start_experiment()
 
