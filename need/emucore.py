@@ -73,7 +73,7 @@ def main():
     signal(SIGTERM, lambda signum, frame: exit(0))
 
     message("Initializing network emulation...")
-    manager = EmulationManager(graph, scheduler)
+    manager = EmulationManager(graph, scheduler,ownIP)
     manager.initialize()
     message("Waiting for command to start experiment")
     sys.stdout.flush()

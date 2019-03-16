@@ -4,9 +4,19 @@
 #include "Destination.h"
 #include "uthash/uthash.h"
 #include "uthash/utlist.h"
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "TC.h"
 #include "TCAL.h"
+
+
+char* print_addr(unsigned int value){
+    struct in_addr addr = {value};
+    char *buff = malloc(100);
+    snprintf(buff,100, "%s", inet_ntoa( addr ) );
+    return buff;
+}
 
 //TODO now that we controll the environment in NEED we no longer need libutc, so we can go back to calling tc directly
 
@@ -21,11 +31,13 @@ void (*usageCallback)(unsigned int, unsigned long, unsigned int) = NULL;
 
 
 void init(unsigned short controllPort, int txqueuelen){
+    fprintf(stderr, "TCAL init controllPort %d qlen:%d\n",controllPort,txqueuelen);
     needControllPort = controllPort;
     TC_init(controllPort, txqueuelen);
 }
 
 void initDestination(unsigned int ip, int bandwidth, int latency, float jitter, float packetLoss){
+    fprintf(stderr, "TCAL_initDestination %s\n",print_addr(ip));
     Destination* dest = destination_create(ip, bandwidth, latency, jitter, packetLoss);
     dest->handle = ++handleCounter;
     HASH_ADD(hh_ip, hosts, ipv4, sizeof(int), dest);
@@ -49,11 +61,14 @@ void changeBandwidth(unsigned int ip, int bandwidth){
     TC_changeBandwidth(dest);
 }
 
-void changeLoss(unsigned int ip, float packetLoss){
+void changeLoss(unsigned int ownIP, unsigned int ip, float packetLoss){
+    fprintf(stderr, "changeLoss from %s to: %s loss:%f\n",print_addr(ownIP),print_addr(ip), packetLoss);
     Destination* dest;
     HASH_FIND(hh_ip, hosts, &ip, sizeof(int), dest);
     dest->packetLossRate = packetLoss;
+    fprintf(stderr, "changeLoss dest_ip:%s dest_loss:%f\n",print_addr(dest->ipv4),dest->packetLossRate);
     TC_changeNetem(dest);
+    fprintf(stderr, "changeLoss from %s to: %s loss:%f DONE\n",print_addr(ownIP),print_addr(ip), packetLoss);
 }
 
 void changeLatency(unsigned int ip, int latency, float jitter){

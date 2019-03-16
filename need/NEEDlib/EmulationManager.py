@@ -1,5 +1,5 @@
 from time import time, sleep
-from threading import Lock
+from threading import Lock, Thread
 from os import environ
 
 from need.NEEDlib.NetGraph import NetGraph
@@ -16,8 +16,43 @@ if sys.version_info >= (3, 0):
 emuManager = None  # type: EmulationManager
 
 
+is_dropping = {}
+
 def collect_usage(ip, sent_bytes, qlen):  # qlen: number of packets in the qdisc, max is txqueuelen
-    emuManager.collect_own_flow(ip, sent_bytes)
+	message("myself: {} ip:{} len: {} bytes: {} ".format( emuManager.ownIP, PathEmulation.long2ip(ip), qlen, sent_bytes))
+	emuManager.collect_own_flow(ip, sent_bytes)
+
+
+	if ip not in is_dropping:
+	    is_dropping[ip] = False
+
+	if qlen >= 90:
+		thread = Thread(target = link_full, args = (ip, True, ))
+		thread.start()
+		#link_full(ip,True)
+	#if qlen <= 70:
+	#	link_full(ip,False)    
+
+
+current_loss = 0
+def link_full(ip, should_drop):
+
+	message("myself: {} ip:{} should_drop:{} is_dropping:{}".format(emuManager.ownIP, PathEmulation.long2ip(ip),should_drop,is_dropping[ip]))
+	if should_drop and not is_dropping[ip]:
+
+		message("myself:{} {} setting loss to 1".format(emuManager.ownIP,PathEmulation.long2ip(ip)))
+		PathEmulation.change_loss_by_ip(ip, 1.0)
+		#PathEmulation.change_loss_by_ip(PathEmulation.ip2long(emuManager.ownIP), 1.0)
+		#PathEmulation.change_loss_by_ip(ip, 1.0)
+		#PathEmulation.change_latency_by_ip(ip, 100, 0.0)
+		is_dropping[ip] = True
+
+	if not should_drop and is_dropping[ip]:
+		message("myself:{} {} settting loss to 0".format(emuManager.ownIP,PathEmulation.long2ip(ip)))
+		#PathEmulation.change_loss_by_ip(PathEmulation.ip2long(emownIP), 0.0)
+		#PathEmulation.change_loss_by_ip(ip, 0.0)
+		#PathEmulation.change_latency_by_ip(ip, 200, 0.0)
+		is_dropping[ip] = False
 
 class EmulationManager:
 
@@ -30,7 +65,7 @@ class EmulationManager:
     ALPHA = 0.25
     ONE_MINUS_ALPHA = 1-ALPHA
 
-    def __init__(self, net_graph, event_scheduler):
+    def __init__(self, net_graph, event_scheduler,_ip):
         self.graph = net_graph  # type: NetGraph
         self.scheduler = event_scheduler  # type: EventScheduler
         self.active_paths = []  # type: List[NetGraph.Path]
@@ -38,6 +73,7 @@ class EmulationManager:
         self.flow_accumulator = {}  # type: Dict[str, List[List[int], int]]
         self.state_lock = Lock()
         self.last_time = 0
+        self.ownIP = _ip
         EmulationManager.POOL_PERIOD = float(environ.get(ENVIRONMENT.POOL_PERIOD, str(EmulationManager.POOL_PERIOD)))
         EmulationManager.ITERATIONS_TO_INTEGRATE = int(environ.get(ENVIRONMENT.ITERATION_COUNT,
                                                                    str(EmulationManager.ITERATIONS_TO_INTEGRATE)))
@@ -52,7 +88,7 @@ class EmulationManager:
         self.comms = CommunicationsManager(self.collect_flow, self.graph, self.scheduler)
 
     def initialize(self):
-        PathEmulation.init(CommunicationsManager.UDP_PORT)
+        PathEmulation.init(CommunicationsManager.UDP_PORT,self.ownIP)
         for service in self.graph.paths:
             if isinstance(service, NetGraph.Service):
                 path = self.graph.paths[service]

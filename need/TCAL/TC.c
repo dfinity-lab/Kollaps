@@ -515,6 +515,7 @@ void TC_changeNetem(Destination *dest){
 
     tail->rta_len = (void *) NLMSG_TAIL(&req.n) - (void *) tail;
 
+    fprintf(stderr, "TC_changeNetem rtnl_talk\n");
     if (rtnl_talk(&rth_persistent, &req.n, NULL) < 0)
         printf("failed to comunicate with tc\n");
     return;
