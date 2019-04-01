@@ -1,7 +1,6 @@
 #!/bin/sh
 
-
-########### reset kubernetes ########################################################################
+########### reset kubernetes #################################################################
 
 
 # sudo swapoff --a && \
@@ -16,11 +15,7 @@
 
 
 
-######################################################################################################
-
-docker stack rm top
-docker rm $(docker ps -aq)
-
+############ copy over Aeron files ############################################################
 
 # yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/binaries/ ~/Documents/NEED/Aeron/
 # yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/lib/ ~/Documents/NEED/Aeron/
@@ -31,7 +26,11 @@ docker rm $(docker ps -aq)
 
 
 
-######################################################################################################
+################################################################################################
+
+docker stack rm top
+docker rm $(docker ps -aq)
+
 
 cd ~/Documents/NEED/
 
@@ -67,11 +66,11 @@ cd ..
 
 
 
+############# push to local docker registry ####################################################
+
 # docker tag need:2.0 localhost:5000/need && \
 # docker push localhost:5000/need
 # docker tag localhost:5000/need need:2.0
-
-
 
 
 

@@ -21,6 +21,7 @@ emuManager = None  # type: EmulationManager
 
 def collect_usage(ip, sent_bytes, qlen):  # qlen: number of packets in the qdisc, max is txqueuelen
 	emuManager.collect_own_flow(ip, sent_bytes)
+	emuManager.qlen = qlen
 
 
 class EmulationManager:
@@ -41,6 +42,9 @@ class EmulationManager:
 		self.active_paths = []  # type: List[NetGraph.Path]
 		self.active_paths_ids = []  # type: List[int]
 		self.flow_accumulator = {}  # type: Dict[str, List[List[int], int]]
+		
+		self.qlen = 0
+		
 		self.state_lock = Lock()
 		self.last_time = 0
 		EmulationManager.POOL_PERIOD = float(environ.get(ENVIRONMENT.POOL_PERIOD, str(EmulationManager.POOL_PERIOD)))
@@ -85,8 +89,7 @@ class EmulationManager:
 		self.last_time = time()
 		self.check_active_flows()  # to prevent bug where data has already passed through the filters before
 		last_time = time()
-
-
+		
 		while True:
 			for i in range(EmulationManager.ITERATIONS_TO_INTEGRATE):
 				sleep_time = EmulationManager.POOL_PERIOD - (time() - last_time)
@@ -101,7 +104,7 @@ class EmulationManager:
 					self.active_paths_ids.clear()
 					self.check_active_flows()
 					
-				self.comms.broadcast_flows(self.active_paths)
+				self.comms.broadcast_flows(self.active_paths, self.qlen)
 				
 			with self.state_lock:
 				self.apply_bandwidth()
@@ -245,6 +248,7 @@ class EmulationManager:
 			self.active_paths.append(path)
 			self.active_paths_ids.append(path.id)
 	
+			# TODO (PG)
 			# self.comms.add_flow(throughput, path.links)
 
 		
