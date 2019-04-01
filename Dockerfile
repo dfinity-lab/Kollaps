@@ -59,8 +59,8 @@ RUN make -C /NEED/pid1 && \
     pacman -R --noconfirm make gcc flex bison pkgconf && \
     pacman -Scc --noconfirm
 
+#RUN git clone --branch master --depth 1 --recurse-submodules git@NEED:joaoneves792/NEED.git ;
 
 ENTRYPOINT ["/usr/bin/pid1", "/usr/bin/python3", "-m", "need.bootstrapper"]
 
 
-#RUN git clone --branch master --depth 1 --recurse-submodules git@NEED:joaoneves792/NEED.git ;\

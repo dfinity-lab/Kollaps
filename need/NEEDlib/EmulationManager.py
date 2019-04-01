@@ -20,7 +20,7 @@ emuManager = None  # type: EmulationManager
 
 
 def collect_usage(ip, sent_bytes, qlen):  # qlen: number of packets in the qdisc, max is txqueuelen
-	emuManager.collect_own_flow(ip, sent_bytes)
+	emuManager.collect_own_flow(ip, sent_bytes, qlen)
 
 
 class EmulationManager:
@@ -36,11 +36,13 @@ class EmulationManager:
 	
 	
 	def __init__(self, net_graph, event_scheduler):
+		
 		self.graph = net_graph				# type: NetGraph
 		self.scheduler = event_scheduler	# type: EventScheduler
 		self.active_paths = []				# type: List[NetGraph.Path]
 		self.active_paths_ids = []			# type: List[int]
-		self.flow_accumulator = {}			# type: Dict[str, List[List[int], int, int]]
+		self.flow_accumulator = {}			# type: Dict[str, List[List[int], int, int, int]]
+
 		self.state_lock = Lock()
 		self.last_time = 0
 		EmulationManager.POOL_PERIOD = float(environ.get(ENVIRONMENT.POOL_PERIOD, str(EmulationManager.POOL_PERIOD)))
@@ -85,8 +87,7 @@ class EmulationManager:
 		self.last_time = time()
 		self.check_active_flows()  # to prevent bug where data has already passed through the filters before
 		last_time = time()
-
-
+		
 		while True:
 			for i in range(EmulationManager.ITERATIONS_TO_INTEGRATE):
 				sleep_time = EmulationManager.POOL_PERIOD - (time() - last_time)
@@ -131,10 +132,11 @@ class EmulationManager:
 
 
 	def apply_bandwidth(self):
-		INDICES = 0
 		RTT = 0
+		INDICES = 0
 		BW = 1
-		AGE = 2
+		QLEN = 2
+		AGE = 3
 
 		# First update the graph with the information of the flows
 		active_links = []
@@ -230,7 +232,7 @@ class EmulationManager:
 		PathEmulation.update_usage()
 		
 		
-	def collect_own_flow(self, ip, sent_bytes):
+	def collect_own_flow(self, ip, sent_bytes, qlen):
 		host = self.graph.hosts_by_ip[ip]
 		# Calculate current throughput
 		if sent_bytes < host.last_bytes:
@@ -259,13 +261,15 @@ class EmulationManager:
 			# print_message(msg)
 			
 			path.used_bandwidth = throughput
+			path.qlen = qlen
 			self.active_paths.append(path)
 			self.active_paths_ids.append(path.id)
 	
+			# TODO (PG)
 			# self.comms.add_flow(throughput, path.links)
 
 		
-	def accumulate_flow(self, bandwidth, link_indices, age=0):
+	def accumulate_flow(self, qlen, bandwidth, link_indices, age=0):
 		"""
 		This method adds a flow to the accumulator (Note: it doesnt grab the lock)
 		:param bandwidth: int
@@ -276,14 +280,15 @@ class EmulationManager:
 		if key in self.flow_accumulator:
 			flow = self.flow_accumulator[key]
 			flow[1] = bandwidth		# flow.bandwidth
-			flow[2] = age			# flow.age
+			flow[2] = bandwidth		# flow.qlen
+			flow[3] = age			# flow.age
 		else:
-			self.flow_accumulator[key] = [link_indices, bandwidth, age]
+			self.flow_accumulator[key] = [link_indices, bandwidth, qlen, age]
 	
 	
 	# link_indices contains the indices of all links on a given path with that bandwidth
 	# ie. len(link_indices) = # of links in path
-	def collect_flow(self, bandwidth, link_indices, age=0):
+	def collect_flow(self, qlen, bandwidth, link_indices, age=0):
 		"""
 		This method collects a flow from other nodes, it checks if it is interesting and if so calls accumulate_flow
 		:param bandwidth: int
@@ -294,7 +299,6 @@ class EmulationManager:
 		
 		# Check if this flow is interesting to us
 		with self.state_lock:
-			self.accumulate_flow(bandwidth, link_indices, age)
+			self.accumulate_flow(qlen, bandwidth, link_indices, age)
 		return True
-
 

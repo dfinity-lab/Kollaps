@@ -4,7 +4,7 @@ import need.NEEDlib.PathEmulation as PathEmulation
 from need.NEEDlib.EventScheduler import EventScheduler
 from need.NEEDlib.utils import start_experiment, stop_experiment, BYTE_LIMIT, SHORT_LIMIT
 from need.NEEDlib.utils import LOCAL_IPS_FILE, REMOTE_IPS_FILE, AERON_LIB_PATH
-from need.NEEDlib.utils import int2ip, ip2int, print_identified, print_error, print_and_fail, print_message, print_named
+from need.NEEDlib.utils import int2ip, ip2int, print_named, print_error, print_and_fail, print_message
 
 from threading import Thread, Lock
 from multiprocessing import Pool
@@ -74,23 +74,25 @@ class CommunicationsManager:
 
 
 		link_count = len(self.graph.links)
-		if link_count <= BYTE_LIMIT:
-			self.link_unit = "1B"
-		elif link_count <= SHORT_LIMIT:
-			self.link_unit = "1H"
-		else:
-			print_and_fail("Topology has too many links: " + str(link_count))
-		self.link_size = struct.calcsize("<"+self.link_unit)
+		# if link_count <= BYTE_LIMIT:
+		# 	self.link_unit = "1B"
+		# elif link_count <= SHORT_LIMIT:
+		# 	self.link_unit = "1H"
+		# else:
+		# 	print_and_fail("Topology has too many links: " + str(link_count))
+		# self.link_size = struct.calcsize("<"+self.link_unit)
 
 		self.supervisor_count = 0
 		self.peer_count = 0
 		
 		if ip is None:
 			self.aeron_id = self.graph.root.ip
+			self.ip = int2ip(self.graph.root.ip)
 		else:
-			self.aeron_id = ip2int(ip)
 			# self.aeron_id = ip2int(socket.gethostbyname(socket.gethostname()))
-			
+			self.aeron_id = ip2int(ip)
+			self.ip = ip
+		
 		for service in self.graph.services:
 			hosts = self.graph.services[service]
 			for host in hosts:
@@ -108,15 +110,20 @@ class CommunicationsManager:
 		if link_count <= BYTE_LIMIT:
 			self.aeron_lib.init(self.aeron_id, False)
 			self.flow_adding_func = self.aeron_lib.addFlow8
-
-		else:
+			
+		elif link_count <= SHORT_LIMIT:
 			self.aeron_lib.init(self.aeron_id, True)
 			self.flow_adding_func = self.aeron_lib.addFlow16
 		
-		CALLBACKTYPE = CFUNCTYPE(c_voidp, c_uint, c_uint, POINTER(c_uint))
+		else:
+			print_and_fail("Topology has too many links: " + str(link_count))
+		
+		
+		CALLBACKTYPE = CFUNCTYPE(c_voidp, c_uint, c_uint, c_uint, POINTER(c_uint))
 		c_callback = CALLBACKTYPE(self.receive_flow)
-		self.callback = c_callback  # keep reference so it does not get garbage collected
-		self.aeron_lib.registerCallback(self.callback)
+		self.flow_callback = c_callback  # keep reference so it does not get garbage collected
+		self.aeron_lib.registerFlowCallback(self.flow_callback)
+	
 		
 		
 		# TODO PG run through this again, rename variables to match new god logs functionality
@@ -124,7 +131,7 @@ class CommunicationsManager:
 		for key, path in self.graph.paths_by_id.items():
 			if len(path.links) > 0 and path.links[0].index not in my_starting_links:
 				my_starting_links.append(path.links[0].index)
-						
+				
 		
 		with open(LOCAL_IPS_FILE, 'r') as file:
 			self.local_ips = json.load(file)
@@ -135,7 +142,7 @@ class CommunicationsManager:
 		# 	self.local_ips = json.load(file)
 		# 	for key, value in self.local_ips.items():
 		# 		self.aeron_lib.addLocalSubs(int(key), len(value), (c_uint * len(value))(*value))
-				
+		
 		with open(REMOTE_IPS_FILE, 'r') as file:
 			self.remote_ips = json.load(file)
 			for key, value in self.remote_ips.items():
@@ -180,12 +187,19 @@ class CommunicationsManager:
 		self.flow_adding_func(throughput, len(link_list), (c_uint * len(link_list))(*link_list))
 
 
-	def receive_flow(self, bandwidth, link_count, link_list):
-		# print_named("(received)", "throughput: " + str(bandwidth) + " links: " + str(link_list[:link_count]))
-		self.flow_collector(bandwidth, link_list[:link_count])
+	def receive_qlen(self, origin_id, qlen):
+		msg = "(received) id: " + str(origin_id) + ", ip: " + int2ip(origin_id) + ", qlen: " + str(qlen)
+		print_named(self.ip, msg)
+		
+	
+	def receive_flow(self, qlen, bandwidth, link_count, link_list):
+		msg = "qlen: " + str(qlen) +  ", bw: " + str(bandwidth) + ", links: " + str(link_list[:link_count])
+		print_named("received", msg)
+
+		self.flow_collector(qlen, bandwidth, link_list[:link_count])
 		self.received += 1
-
-
+	
+	
 	def broadcast_flows(self, active_paths):
 		"""
 		:param active_paths: List[NetGraph.Path]
@@ -197,10 +211,10 @@ class CommunicationsManager:
 				if len(active_paths) > 0:
 					self.produced += self.peer_count
 					
-					# TODO add_flow directly in EmulationManager.py
+					# TODO (PG) add_flow directly in EmulationManager.py
 					for path in active_paths:
 						links = [link.index for link in path.links]
-						self.flow_adding_func(int(path.used_bandwidth), len(links), (c_uint * len(links))(*links))
+						self.flow_adding_func(int(path.qlen), int(path.used_bandwidth), len(links), (c_uint * len(links))(*links))
 					
 					self.aeron_lib.flush()
 				
@@ -209,7 +223,6 @@ class CommunicationsManager:
 			sys.stdout.flush()
 			sys.stderr.flush()
 			
-		
 	
 	def shutdown(self):
 		self.aeron_lib.teardown()
@@ -235,7 +248,7 @@ class CommunicationsManager:
 						print_message("Received Shutdown command")
 						
 						msg = "packets: recv " + str(self.received) + ", prod " + str(self.produced)
-						print_identified(self.graph, msg)
+						print_named(self.ip, msg)
 						
 						connection.send(struct.pack("<3Q", self.produced, 50, self.received))
 						ack = connection.recv(1)
@@ -261,7 +274,7 @@ class CommunicationsManager:
 								
 							# self.sock.close()
 							PathEmulation.tearDown()
-							print_identified(self.graph, "Shutting down")
+							print_named(self.ip, "Shutting down")
 							sys.stdout.flush()
 							sys.stderr.flush()
 							stop_experiment()

@@ -89,7 +89,7 @@ class NetGraph:
             self.network = network
 
     class Path(object):
-        def __init__(self, links, id, used_bandwidth=0):
+        def __init__(self, links, id, used_bandwidth=0, qlen=0):
             self.links = links  # type: List[NetGraph.Link]
             self.id = id
             self.lock = Lock()
@@ -99,6 +99,7 @@ class NetGraph:
             self.max_bandwidth = None
             self.jitter = 0
             self.used_bandwidth = used_bandwidth
+            self.qlen = qlen
 
             self.calculate_end_to_end_properties()
             self.current_bandwidth = self.max_bandwidth

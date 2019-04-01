@@ -1,6 +1,28 @@
 # NEED
 Decentralized container based network emulator
 
+## New
+
+This version is now using the images from NEED_Images/samples_need_2_0/.
+
+Comunication is done through Aeron.
+
+Every process is started from the God conatiner and the ones on the same machine comunicate via shared memory. With other machines, via reliable UDP.
+
+In this branch the structure for packets is: 
+```
+//  packet:
+//      origin_id               uint32 (it's an IP)
+//      qlen                    uint16
+//      #flows                  uint8/uint16 (depending on # of hosts)
+//      list_of_flows           list of flows described below
+//
+//      flow:
+//          throughput          uint32
+//          #links              uint8/uint16 (depending on # of hosts)
+//          list_of_link_ids    list of uint8/uint16 (depending on # of hosts)
+```
+
 Clone this repo with:
 ```
 $git clone --branch master --depth 1 --recurse-submodules https://github.com/miguelammatos/NEED.git

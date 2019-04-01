@@ -24,7 +24,7 @@ class LoggerState:
     comms = None  # type: CommunicationsManager
 
 
-def collect_flow(bandwidth, links):
+def collect_flow(qlen, bandwidth, links):
     key = str(links[0]) + ":" + str(links[-1])
     with LoggerState.lock:
         if key in LoggerState.flows:
