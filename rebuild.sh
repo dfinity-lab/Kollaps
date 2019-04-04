@@ -20,9 +20,9 @@
 docker stack rm top
 docker rm $(docker ps -aq)
 
+# yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/binaries ~/Documents/NEED/Aeron/ && \
 # mkdir -p ~/Documents/NEED/Aeron/usr/lib && \
 # mkdir -p ~/Documents/NEED/Aeron/binaries && \
-# # yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/binaries ~/Documents/NEED/Aeron/ && \
 # yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/binaries/aeronmd ~/Documents/NEED/Aeron/binaries/ && \
 # yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/binaries/AeronStat ~/Documents/NEED/Aeron/binaries/ && \
 # yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/lib ~/Documents/NEED/Aeron/  && \
@@ -50,10 +50,28 @@ docker build --rm -t need:2.0 .
 # docker build --rm -t warpenguin.no-ip.org/dashboard:1.0 ~/Documents/NEED_Images/samples_need_2_0/dashboard
 
 
-
 #################################################################################################
 
 cd ~/Documents/NEED/
+# cd ~/Documents/NEED_Images/samples_need_2_0/
+# 
+# cd alpineclient/
+# docker build --rm -t warpenguin.no-ip.org/alpineclient:1.0 .
+# cd ..
+# 
+# cd alpineserver/
+# docker build --rm -t warpenguin.no-ip.org/alpineserver:1.0 .
+# cd ..
+# 
+# cd logger/
+# docker build --rm -t warpenguin.no-ip.org/logger:1.0 .
+# cd ..
+# 
+# cd dashboard/
+# docker build --rm -t warpenguin.no-ip.org/dashboard:1.0 .
+# cd ..
+
+#################################################################################################
 
 NEEDdeploymentGenerator examples/topology5.xml -s > topology5.yaml && \
 NEEDdeploymentGenerator examples/topology100.xml -s > topology100.yaml && \
