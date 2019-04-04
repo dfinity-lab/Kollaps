@@ -64,16 +64,15 @@ def resolve_ips(client, low_level_client):
 	global ready_gods
 
 	try:
-		number_of_gods = len(low_level_client.nodes())
 		local_ips_list = []
 		own_ip = socket.gethostbyname(socket.gethostname())
-		
-		print_named("god", "ip: " + str(own_ip))
-		print_named("god", "number of gods: " + str(number_of_gods))
 		
 		orchestrator = os.getenv('NEED_ORCHESTRATOR', 'swarm')
 		if orchestrator == 'kubernetes':
 			
+			number_of_gods = len(client.list_node().to_dict()["items"])  # one god per machine
+			print_named("god", "ip: " + str(own_ip) + ", #gods: " + str(number_of_gods))
+
 			while len(local_ips_list) <= 0:
 				need_pods = client.list_namespaced_pod('default')
 				for pod in need_pods.items:
@@ -81,29 +80,14 @@ def resolve_ips(client, low_level_client):
 					
 				if None in local_ips_list:
 					local_ips_list.clear()
-				
-				#if pod.status.pod_ip is None:
-					#local_ips_list.append("111.111.111.111")
-				#else:
-					#local_ips_list.append(pod.status.pod_ip)
-			#need_pods = client.list_namespaced_pod('default')
-			#tries = 100
-			#for pod in need_pods.items:
-				#while pod.status.pod_ip is None and tries > 0:
-					#sleep(1)
-					#tries -= 1
-					##print_named("god", "pod.status.pod_ip is None")
-				#local_ips_list.append(pod.status.pod_ip)
-				
-				##if pod.status.pod_ip is None:
-					##local_ips_list.append("111.111.111.111")
-				##else:
-					##local_ips_list.append(pod.status.pod_ip)
 			
 		else:
 			if orchestrator != 'swarm':
 				print_named("bootstrapper", "Unrecognized orchestrator. Using default docker swarm.")
 			
+			number_of_gods = len(low_level_client.nodes())
+			print_named("god", "ip: " + str(own_ip) + ", #gods: " + str(number_of_gods))
+
 			containers = client.containers.list()
 			for container in containers:
 				test_net_config = low_level_client.inspect_container(container.id)['NetworkSettings']['Networks'].get('test_overlay')
@@ -187,6 +171,7 @@ def resolve_ips(client, low_level_client):
 	except Exception as e:
 		print_error_named("god", e)
 		sys.stdout.flush()
+		sleep(10)
 		sys.exit(-1)
 
 
