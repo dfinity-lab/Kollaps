@@ -359,3 +359,4 @@ def path_change(graph, new_graph):
 
     end = time()
     print_message("recalculated in " + str(end - start))
+    

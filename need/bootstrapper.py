@@ -586,4 +586,3 @@ if __name__ == '__main__':
             print_named("bootstrapper", "Unrecognized orchestrator. Using default docker swarm.")
         
         docker_bootstrapper()
-        

@@ -125,7 +125,6 @@ class NetGraph:
                     # and then invert it
                     # Problem is similar to probability of getting at least one 6 in multiple dice rolls
                     total_not_drop_probability *= (1.0-float(link.drop))
-                    
                 except:
                     print_and_fail("Provided link data is not valid: "
                         + str(link.latency) + "ms "

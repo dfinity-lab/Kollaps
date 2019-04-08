@@ -4,7 +4,7 @@ import need.NEEDlib.PathEmulation as PathEmulation
 from need.NEEDlib.EventScheduler import EventScheduler
 from need.NEEDlib.utils import start_experiment, stop_experiment, BYTE_LIMIT, SHORT_LIMIT
 from need.NEEDlib.utils import LOCAL_IPS_FILE, REMOTE_IPS_FILE, AERON_LIB_PATH
-from need.NEEDlib.utils import int2ip, ip2int, print_named, print_error, print_and_fail, print_message
+from need.NEEDlib.utils import int2ip, ip2int, print_identified, print_error, print_named, print_message, print_and_fail
 
 from threading import Thread, Lock
 from multiprocessing import Pool
@@ -87,12 +87,10 @@ class CommunicationsManager:
 		
 		if ip is None:
 			self.aeron_id = self.graph.root.ip
-			self.ip = int2ip(self.graph.root.ip)
 		else:
-			# self.aeron_id = ip2int(socket.gethostbyname(socket.gethostname()))
 			self.aeron_id = ip2int(ip)
-			self.ip = ip
-		
+			# self.aeron_id = ip2int(socket.gethostbyname(socket.gethostname()))
+			
 		for service in self.graph.services:
 			hosts = self.graph.services[service]
 			for host in hosts:
@@ -117,7 +115,6 @@ class CommunicationsManager:
 		
 		else:
 			print_and_fail("Topology has too many links: " + str(link_count))
-		
 		
 		CALLBACKTYPE = CFUNCTYPE(c_voidp, c_uint, c_uint, c_uint, POINTER(c_uint))
 		c_callback = CALLBACKTYPE(self.receive_flow)
@@ -198,8 +195,8 @@ class CommunicationsManager:
 
 		self.flow_collector(qlen, bandwidth, link_list[:link_count])
 		self.received += 1
-	
-	
+
+
 	def broadcast_flows(self, active_paths):
 		"""
 		:param active_paths: List[NetGraph.Path]
@@ -248,7 +245,7 @@ class CommunicationsManager:
 						print_message("Received Shutdown command")
 						
 						msg = "packets: recv " + str(self.received) + ", prod " + str(self.produced)
-						print_named(self.ip, msg)
+						print_identified(self.graph, msg)
 						
 						connection.send(struct.pack("<3Q", self.produced, 50, self.received))
 						ack = connection.recv(1)
@@ -274,7 +271,7 @@ class CommunicationsManager:
 								
 							# self.sock.close()
 							PathEmulation.tearDown()
-							print_named(self.ip, "Shutting down")
+							print_identified(self.graph, "Shutting down")
 							sys.stdout.flush()
 							sys.stderr.flush()
 							stop_experiment()

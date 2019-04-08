@@ -8,7 +8,7 @@ from need.NEEDlib.EventScheduler import EventScheduler
 import need.NEEDlib.PathEmulation as PathEmulation
 from need.NEEDlib.CommunicationsManager import CommunicationsManager
 from need.NEEDlib.utils import ENVIRONMENT
-from need.NEEDlib.utils import print_error, print_message
+from need.NEEDlib.utils import print_identified, print_message
 
 import sys
 if sys.version_info >= (3, 0):
@@ -17,11 +17,6 @@ if sys.version_info >= (3, 0):
 
 # Global variable used within the callback to TCAL
 emuManager = None  # type: EmulationManager
-
-
-def collect_usage(ip, sent_bytes, qlen):  # qlen: number of packets in the qdisc, max is txqueuelen
-	emuManager.collect_own_flow(ip, sent_bytes, qlen)
-
 
 class EmulationManager:
 
@@ -36,7 +31,6 @@ class EmulationManager:
 	
 	
 	def __init__(self, net_graph, event_scheduler):
-		
 		self.graph = net_graph				# type: NetGraph
 		self.scheduler = event_scheduler	# type: EventScheduler
 		self.active_paths = []				# type: List[NetGraph.Path]
@@ -46,8 +40,7 @@ class EmulationManager:
 		self.state_lock = Lock()
 		self.last_time = 0
 		EmulationManager.POOL_PERIOD = float(environ.get(ENVIRONMENT.POOL_PERIOD, str(EmulationManager.POOL_PERIOD)))
-		EmulationManager.ITERATIONS_TO_INTEGRATE = int(environ.get(ENVIRONMENT.ITERATION_COUNT,
-																   str(EmulationManager.ITERATIONS_TO_INTEGRATE)))
+		EmulationManager.ITERATIONS_TO_INTEGRATE = int(environ.get(ENVIRONMENT.ITERATION_COUNT, str(EmulationManager.ITERATIONS_TO_INTEGRATE)))
 		
 		print_message("Pool Period: " + str(EmulationManager.POOL_PERIOD))
 		print_message("Iteration Count: " + str(EmulationManager.ITERATIONS_TO_INTEGRATE))
@@ -87,7 +80,8 @@ class EmulationManager:
 		self.last_time = time()
 		self.check_active_flows()  # to prevent bug where data has already passed through the filters before
 		last_time = time()
-		
+
+
 		while True:
 			for i in range(EmulationManager.ITERATIONS_TO_INTEGRATE):
 				sleep_time = EmulationManager.POOL_PERIOD - (time() - last_time)
@@ -265,17 +259,22 @@ class EmulationManager:
 			self.active_paths.append(path)
 			self.active_paths_ids.append(path.id)
 	
-			# TODO (PG)
 			# self.comms.add_flow(throughput, path.links)
 
 		
 	def accumulate_flow(self, qlen, bandwidth, link_indices, age=0):
+
 		"""
 		This method adds a flow to the accumulator (Note: it doesnt grab the lock)
 		:param bandwidth: int
 		:param link_indices: List[int]
 		:param age: int
 		"""
+
+		# PG origin IP should not be necessary, Dashboard is already able to identify src and dst
+		msg = "(received) qlen: " + str(qlen) + ", bw: " + str(bandwidth) + ", links: " + str(link_indices)
+		print_identified(self.graph, msg)
+
 		key = str(link_indices[0]) + ":" + str(link_indices[-1])
 		if key in self.flow_accumulator:
 			flow = self.flow_accumulator[key]
@@ -302,3 +301,7 @@ class EmulationManager:
 			self.accumulate_flow(qlen, bandwidth, link_indices, age)
 		return True
 
+
+def collect_usage(ip, sent_bytes, qlen):  # qlen: number of packets in the qdisc, max is txqueuelen
+	emuManager.collect_own_flow(ip, sent_bytes, qlen)
+	
