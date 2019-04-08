@@ -318,7 +318,7 @@ def query_until_ready():
     print_named("dashboard", "Dashboard: ready!")  # PG
 
 
-def collect_flow(bandwidth, links):
+def collect_flow(qlen, bandwidth, links):
     key = str(links[0]) + ":" + str(links[-1])
     with DashboardState.lock:
         DashboardState.flows[key] = (links[0], links[-1], int(bandwidth/1000))

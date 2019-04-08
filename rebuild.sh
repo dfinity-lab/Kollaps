@@ -25,8 +25,7 @@
 # tar -zcvf Aeron.tar.gz Aeron
 
 
-
-################################################################################################
+###############################################################################################
 
 docker stack rm top
 docker rm $(docker ps -aq)
@@ -41,10 +40,15 @@ sudo pip install --force-reinstall need-2.0-py3-none-any.whl
 # docker build --rm -t need:2.0 .
 docker build --no-cache --rm -t need:2.0 .
 
+
+###############################################################################################
+
 NEEDdeploymentGenerator examples/topology5.xml -s > topology5.yaml
 NEEDdeploymentGenerator examples/topology100.xml -s > topology100.yaml
 NEEDdeploymentGenerator examples/simple_dynamic.xml -s > simple_dynamic.yaml
 
+
+############# rebuild images ##################################################################
 
 # cd ~/Documents/NEED_Images/samples_need_2_0/
 # 
@@ -68,10 +72,9 @@ NEEDdeploymentGenerator examples/simple_dynamic.xml -s > simple_dynamic.yaml
 
 ############# push to local docker registry ####################################################
 
-docker tag need:2.0 localhost:5000/need && \
-docker push localhost:5000/need && \
-docker tag localhost:5000/need need:2.0
-
+# docker tag need:2.0 localhost:5000/need && \
+# docker push localhost:5000/need && \
+# docker tag localhost:5000/need need:2.0
 
 
 ########################################################################################

@@ -8,7 +8,7 @@ from need.NEEDlib.EventScheduler import EventScheduler
 import need.NEEDlib.PathEmulation as PathEmulation
 from need.NEEDlib.CommunicationsManager import CommunicationsManager
 from need.NEEDlib.utils import ENVIRONMENT
-from need.NEEDlib.utils import print_error, print_message
+from need.NEEDlib.utils import print_identified, print_message
 
 import sys
 if sys.version_info >= (3, 0):
@@ -17,11 +17,6 @@ if sys.version_info >= (3, 0):
 
 # Global variable used within the callback to TCAL
 emuManager = None  # type: EmulationManager
-
-
-def collect_usage(ip, sent_bytes, qlen):  # qlen: number of packets in the qdisc, max is txqueuelen
-	emuManager.collect_own_flow(ip, sent_bytes)
-	emuManager.qlen = qlen
 
 
 class EmulationManager:
@@ -42,14 +37,10 @@ class EmulationManager:
 		self.active_paths = []  # type: List[NetGraph.Path]
 		self.active_paths_ids = []  # type: List[int]
 		self.flow_accumulator = {}  # type: Dict[str, List[List[int], int]]
-		
-		self.qlen = 0
-		
 		self.state_lock = Lock()
 		self.last_time = 0
 		EmulationManager.POOL_PERIOD = float(environ.get(ENVIRONMENT.POOL_PERIOD, str(EmulationManager.POOL_PERIOD)))
-		EmulationManager.ITERATIONS_TO_INTEGRATE = int(environ.get(ENVIRONMENT.ITERATION_COUNT,
-																   str(EmulationManager.ITERATIONS_TO_INTEGRATE)))
+		EmulationManager.ITERATIONS_TO_INTEGRATE = int(environ.get(ENVIRONMENT.ITERATION_COUNT, str(EmulationManager.ITERATIONS_TO_INTEGRATE)))
 		
 		print_message("Pool Period: " + str(EmulationManager.POOL_PERIOD))
 		print_message("Iteration Count: " + str(EmulationManager.ITERATIONS_TO_INTEGRATE))
@@ -89,7 +80,8 @@ class EmulationManager:
 		self.last_time = time()
 		self.check_active_flows()  # to prevent bug where data has already passed through the filters before
 		last_time = time()
-		
+
+
 		while True:
 			for i in range(EmulationManager.ITERATIONS_TO_INTEGRATE):
 				sleep_time = EmulationManager.POOL_PERIOD - (time() - last_time)
@@ -104,7 +96,7 @@ class EmulationManager:
 					self.active_paths_ids.clear()
 					self.check_active_flows()
 					
-				self.comms.broadcast_flows(self.active_paths, self.qlen)
+				self.comms.broadcast_flows(self.active_paths)
 				
 			with self.state_lock:
 				self.apply_bandwidth()
@@ -216,7 +208,7 @@ class EmulationManager:
 		PathEmulation.update_usage()
 		
 		
-	def collect_own_flow(self, ip, sent_bytes):
+	def collect_own_flow(self, ip, sent_bytes, qlen):
 		host = self.graph.hosts_by_ip[ip]
 		# Calculate current throughput
 		if sent_bytes < host.last_bytes:
@@ -245,19 +237,24 @@ class EmulationManager:
 			# print_message(msg)
 			
 			path.used_bandwidth = throughput
+			path.qlen = qlen
 			self.active_paths.append(path)
 			self.active_paths_ids.append(path.id)
 	
-			# TODO (PG)
 			# self.comms.add_flow(throughput, path.links)
 
 		
-	def accumulate_flow(self, bandwidth, link_indices):
+	def accumulate_flow(self, qlen, bandwidth, link_indices):
 		"""
 		This method adds a flow to the accumulator (Note: it doesnt grab the lock)
 		:param bandwidth: int
 		:param link_indices: List[int]
 		"""
+		
+		# PG origin IP should not be necessary, Dashboard is already able to identify src and dst
+		msg = "(received) qlen: " + str(qlen) + ", bw: " + str(bandwidth) + ", links: " + str(link_indices)
+		print_identified(self.graph, msg)
+
 		BW = 1
 		key = str(link_indices[0]) + ":" + str(link_indices[-1])
 		if key in self.flow_accumulator:
@@ -269,7 +266,7 @@ class EmulationManager:
 	
 	# link_indices contains the indices of all links on a given path with that bandwidth
 	# ie. len(link_indices) = # of links in path
-	def collect_flow(self, bandwidth, link_indices):
+	def collect_flow(self, qlen, bandwidth, link_indices):
 		"""
 		This method collects a flow from other nodes, it checks if it is interesting and if so calls accumulate_flow
 		:param bandwidth: int
@@ -279,7 +276,10 @@ class EmulationManager:
 		
 		# Check if this flow is interesting to us
 		with self.state_lock:
-			self.accumulate_flow(bandwidth, link_indices)
+			self.accumulate_flow(qlen, bandwidth, link_indices)
 		return True
 
 
+def collect_usage(ip, sent_bytes, qlen):  # qlen: number of packets in the qdisc, max is txqueuelen
+	emuManager.collect_own_flow(ip, sent_bytes, qlen)
+	

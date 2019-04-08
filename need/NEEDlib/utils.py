@@ -5,6 +5,7 @@ import struct
 import socket
 import docker
 from subprocess import Popen
+from time import sleep
 
 
 BYTE_LIMIT = 255
@@ -97,8 +98,9 @@ def int2ip(addr):
 	return socket.inet_ntoa(struct.pack("!I", addr))
 
 
-# def get_own_ip():
-#     return str(socket.gethostbyname(socket.gethostname()))
+def list_compare(list1, list2):
+	return (list1 > list2) - (list1 < list2)
+
 
 def get_own_ip(graph):
 	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -138,8 +140,12 @@ def print_identified(graph, msg):
 	sys.stdout.flush()
 
 
-def print_and_fail(message):
+def print_and_fail(msg):
+	message = msg.message if hasattr(msg, 'message') else msg
+
 	print("An error occured, terminating!", file=sys.stderr)
 	print("Error Message: " + str(message), file=sys.stderr)
+	sys.stdout.flush()
 	sys.stderr.flush()
+	sleep(5)
 	exit(-1)
