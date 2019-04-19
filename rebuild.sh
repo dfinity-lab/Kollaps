@@ -21,15 +21,15 @@ docker stack rm top
 docker rm $(docker ps -aq)
 
 # yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/binaries ~/Documents/NEED/Aeron/ && \
-# mkdir -p ~/Documents/NEED/Aeron/usr/lib && \
-# mkdir -p ~/Documents/NEED/Aeron/binaries && \
-# yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/binaries/aeronmd ~/Documents/NEED/Aeron/binaries/ && \
-# yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/binaries/AeronStat ~/Documents/NEED/Aeron/binaries/ && \
-# yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/lib ~/Documents/NEED/Aeron/  && \
-# yes | cp -rpf /usr/lib/libbsd.so.0.9.1  ~/Documents/NEED/Aeron/usr/lib/libbsd.so.0.9.1  && \
-# yes | cp -rpf /usr/lib/libbsd.so.0  ~/Documents/NEED/Aeron/usr/lib/libbsd.so.0  && \
-# tar -zcvf Aeron.tar.gz Aeron  && \
-# rm -rf Aeron/
+mkdir -p ~/Documents/NEED/Aeron/usr/lib && \
+mkdir -p ~/Documents/NEED/Aeron/binaries && \
+yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/binaries/aeronmd ~/Documents/NEED/Aeron/binaries/ && \
+yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/binaries/AeronStat ~/Documents/NEED/Aeron/binaries/ && \
+yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/lib ~/Documents/NEED/Aeron/  && \
+yes | cp -rpf /usr/lib/libbsd.so.0.9.1  ~/Documents/NEED/Aeron/usr/lib/libbsd.so.0.9.1  && \
+yes | cp -rpf /usr/lib/libbsd.so.0  ~/Documents/NEED/Aeron/usr/lib/libbsd.so.0  && \
+tar -zcvf Aeron.tar.gz Aeron  && \
+rm -rf Aeron/
 
 ###############################################################################################
 

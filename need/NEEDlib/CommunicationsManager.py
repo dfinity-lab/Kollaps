@@ -183,16 +183,15 @@ class CommunicationsManager:
 	def add_flow(self, throughput, link_list):
 		self.flow_adding_func(throughput, len(link_list), (c_uint * len(link_list))(*link_list))
 
-
+	# deprecated, not in use
 	def receive_qlen(self, origin_id, qlen):
 		msg = "(received) id: " + str(origin_id) + ", ip: " + int2ip(origin_id) + ", qlen: " + str(qlen)
 		print_named(self.ip, msg)
 		
 	
 	def receive_flow(self, qlen, bandwidth, link_count, link_list):
-		msg = "qlen: " + str(qlen) +  ", bw: " + str(bandwidth) + ", links: " + str(link_list[:link_count])
-		print_named("received", msg)
-
+		# msg = "qlen: " + str(qlen) +  ", bw: " + str(bandwidth) + ", links: " + str(link_list[:link_count])
+		# print_named("received", msg)
 		self.flow_collector(qlen, bandwidth, link_list[:link_count])
 		self.received += 1
 
