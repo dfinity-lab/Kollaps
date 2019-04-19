@@ -20,16 +20,16 @@
 docker stack rm top
 docker rm $(docker ps -aq)
 
-# yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/binaries ~/Documents/NEED/Aeron/ && \
-mkdir -p ~/Documents/NEED/Aeron/usr/lib && \
-mkdir -p ~/Documents/NEED/Aeron/binaries && \
-yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/binaries/aeronmd ~/Documents/NEED/Aeron/binaries/ && \
-yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/binaries/AeronStat ~/Documents/NEED/Aeron/binaries/ && \
-yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/lib ~/Documents/NEED/Aeron/  && \
-yes | cp -rpf /usr/lib/libbsd.so.0.9.1  ~/Documents/NEED/Aeron/usr/lib/libbsd.so.0.9.1  && \
-yes | cp -rpf /usr/lib/libbsd.so.0  ~/Documents/NEED/Aeron/usr/lib/libbsd.so.0  && \
-tar -zcvf Aeron.tar.gz Aeron  && \
-rm -rf Aeron/
+# # yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/binaries ~/Documents/NEED/Aeron/ && \
+# mkdir -p ~/Documents/NEED/Aeron/usr/lib && \
+# mkdir -p ~/Documents/NEED/Aeron/binaries && \
+# yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/binaries/aeronmd ~/Documents/NEED/Aeron/binaries/ && \
+# yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/binaries/AeronStat ~/Documents/NEED/Aeron/binaries/ && \
+# yes | cp -rpf ~/Documents/aeron4need/cppbuild/Release/lib ~/Documents/NEED/Aeron/  && \
+# yes | cp -rpf /usr/lib/libbsd.so.0.9.1  ~/Documents/NEED/Aeron/usr/lib/libbsd.so.0.9.1  && \
+# yes | cp -rpf /usr/lib/libbsd.so.0  ~/Documents/NEED/Aeron/usr/lib/libbsd.so.0  && \
+# tar -zcvf Aeron.tar.gz Aeron  && \
+# rm -rf Aeron/
 
 ###############################################################################################
 
@@ -43,7 +43,6 @@ docker build --rm -t need:2.0 .
 
 #################################################################################################
 
-<<<<<<< HEAD
 # docker build --rm -t warpenguin.no-ip.org/alpineclient:1.0 ~/Documents/NEED_Images/samples_need_2_0/alpineclient && \
 # docker build --rm -t warpenguin.no-ip.org/alpineserver:1.0 ~/Documents/NEED_Images/samples_need_2_0/alpineserver && \
 # docker build --rm -t warpenguin.no-ip.org/logger:1.0 ~/Documents/NEED_Images/samples_need_2_0/logger && \
@@ -53,9 +52,6 @@ docker build --rm -t need:2.0 .
 #################################################################################################
 
 cd ~/Documents/NEED/
-=======
-
-###############################################################################################
 
 NEEDdeploymentGenerator examples/topology5.xml -s > topology5.yaml
 NEEDdeploymentGenerator examples/topology100.xml -s > topology100.yaml
@@ -64,7 +60,6 @@ NEEDdeploymentGenerator examples/simple_dynamic.xml -s > simple_dynamic.yaml
 
 ############# rebuild images ##################################################################
 
->>>>>>> merged master into this branch
 # cd ~/Documents/NEED_Images/samples_need_2_0/
 # 
 # cd alpineclient/
@@ -98,16 +93,9 @@ NEEDdeploymentGenerator examples/topology400.xml -s > topology400.yaml
 
 ############# push to local docker registry ####################################################
 
-<<<<<<< HEAD
 docker tag need:2.0 localhost:5000/need && \
-docker push localhost:5000/need
+docker push localhost:5000/need && \
 docker tag localhost:5000/need need:2.0
-
-=======
-# docker tag need:2.0 localhost:5000/need && \
-# docker push localhost:5000/need && \
-# docker tag localhost:5000/need need:2.0
->>>>>>> merged master into this branch
 
 ########################################################################################
 
