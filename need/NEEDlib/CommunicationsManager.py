@@ -68,21 +68,25 @@ class CommunicationsManager:
 		self.supervisor_count = 0
 		self.peer_count = 0
 		
-		if ip is None:
-			self.aeron_id = self.graph.root.ip
-		else:
-			self.aeron_id = ip2int(ip)
-			# self.aeron_id = ip2int(socket.gethostbyname(socket.gethostname()))
-			
+		# FIXME
+		# if ip is None:
+		# 	self.aeron_id = self.graph.root.ip
+		# else:
+		# 	self.aeron_id = ip2int(ip)
+		# 	# self.aeron_id = ip2int(socket.gethostbyname(socket.gethostname()))
+		self.aeron_id = ip2int(ip)
+		
+		
 		for service in self.graph.services:
 			hosts = self.graph.services[service]
 			for host in hosts:
-				if host != self.graph.root:
-					self.peer_count += 1
-					
+				# if host != self.graph.root:	# count self, will be subtracted later
+				# 	self.peer_count += 1
+				
 				if host.supervisor:
 					self.supervisor_count += 1
-		self.peer_count -= self.supervisor_count
+		
+		self.peer_count -= self.supervisor_count + 1  # subtract self counted on the loop above
 
 
 		# setup python callback

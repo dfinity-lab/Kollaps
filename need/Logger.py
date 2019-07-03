@@ -5,7 +5,7 @@ import json
 from os import environ
 from threading import Lock
 
-from need.NEEDlib.CommunicationsManager import CommunicationsManager
+from need.NEEDlib.communications.AeronHandler import AeronHandler
 from need.NEEDlib.NetGraph import NetGraph
 from need.NEEDlib.XMLGraphParser import XMLGraphParser
 from need.NEEDlib.utils import print_named
@@ -21,7 +21,7 @@ class LoggerState:
     graph = None  # type: NetGraph
     lock = Lock()
     flows = {} # type: Dict[str, List[int, int]]
-    comms = None  # type: CommunicationsManager
+    comms = None  # type: AeronHandler
 
 
 def collect_flow(bandwidth, links):
@@ -49,7 +49,8 @@ def main():
     XMLGraphParser(topology_file, graph).fill_graph()
     
     own_ip = socket.gethostbyname(socket.gethostname())
-    LoggerState.comms = CommunicationsManager(collect_flow, graph, None, own_ip)
+    # LoggerState.comms = CommunicationsManager(collect_flow, graph, None, own_ip)
+    LoggerState.comms = AeronHandler(collect_flow, graph, None, own_ip)
 
     LoggerState.graph = graph
     

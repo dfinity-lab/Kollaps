@@ -10,6 +10,7 @@ from time import sleep
 from need.NEEDlib.utils import int2ip, ip2int
 from need.NEEDlib.utils import print_error, print_and_fail, print_named, print_error_named
 from need.NEEDlib.utils import LOCAL_IPS_FILE, REMOTE_IPS_FILE, GOD_IPS_SHARE_PORT
+from need.NEEDlib.utils import TOPOLOGY
 
 
 class Bootstrapper(object):
@@ -23,6 +24,7 @@ class Bootstrapper(object):
         self.gods = {}
         self.ready_gods = []
         self.aeron_media_driver = None
+        self.emucore = None
         self.already_bootstrapped = {}
         self.instance_count = 0
         
@@ -30,19 +32,36 @@ class Bootstrapper(object):
     def init_clients(self, high_level_client, low_level_client):
         self.high_level_client = high_level_client
         self.low_level_client = low_level_client
-        
-        
+
+
     def start_aeron_media_driver(self):
         try:
             self.aeron_media_driver = Popen('/usr/bin/Aeron/aeronmd')
             print_named("god", "started aeron_media_driver.")
-
+    
         except Exception as e:
             print_error("[Py (god)] failed to start aeron media driver.")
             print_and_fail(e)
+        
+        
+    def start_emulation_core(self):
+        try:
+            cmd = ["/usr/bin/python3", "/usr/bin/EmulationManager",
+                   TOPOLOGY, "GodContainer", "GodContainer"]
+            self.emucore = Popen(cmd)
+            print_named("god", "started emulation core.")
+
+        except Exception as e:
+            print_error("[Py (god)] failed to start the emulation core.")
+            print_and_fail(e)
+            
     
-    
-    def terminate_aeron_media_driver(self):
+    def teardown(self):
+        if self.emucore:
+            self.emucore.terminate()
+            print_named("god", "emulation core terminating...")
+            self.emucore.wait()
+            
         if self.aeron_media_driver:
             self.aeron_media_driver.terminate()
             print_named("god", "aeron_media_driver terminating...")

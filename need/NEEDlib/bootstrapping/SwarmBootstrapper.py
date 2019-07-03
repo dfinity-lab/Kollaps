@@ -1,19 +1,18 @@
 #! /usr/bin/python3
 
-# from docker.types import Mount
-import docker
 
 import os
 import sys
 import socket
 import random
+import docker
 
 from subprocess import Popen
 from time import sleep
 from signal import pause
 
 from need.NEEDlib.bootstrapping.Bootstrapper import Bootstrapper
-from need.NEEDlib.utils import print_message, print_error, print_and_fail, print_named, print_error_named
+from need.NEEDlib.utils import print_message, print_error, print_named, print_error_named
 from need.NEEDlib.utils import DOCKER_SOCK, TOPOLOGY
 
 
@@ -141,16 +140,16 @@ class SwarmBootstrapper(Bootstrapper):
         
             cmd = ["nsenter",
                    "-t", str(pid),
-                   "-n", "/usr/bin/python3", "/usr/bin/NEEDemulationManager",
+                   "-n", "/usr/bin/python3", "/usr/bin/EmulationEnforcer",
                    TOPOLOGY, str(container_id), str(pid)]
             emucore_instance = Popen(cmd)
         
             self.instance_count += 1
             print_named("god", "Done bootstrapping " + container.name)
             self.already_bootstrapped[container_id] = emucore_instance
-    
-        except:
-            print_error_named("god", "! App container bootstrapping failed... will try again.")
+            
+        except Exception as e:
+            print_error_named("god", str(e) + "! App container bootstrapping failed... will try again.")
 
 
     def bootstrap(self, mode, label, bootstrapper_id):
@@ -168,9 +167,10 @@ class SwarmBootstrapper(Bootstrapper):
             # FIXME PG check why this was erasing the topology.xml file
             # self.copy_topology(self.low_level_client, bootstrapper_id)
             
-            # next we start the Aeron Media Driver
+            # next we start the Aeron Media Driver followed by the EmuCore
             self.start_aeron_media_driver()
-            
+            self.start_emulation_core()
+
             # find IPs of all God containers in the cluster
             self.resolve_ips(int(os.getenv('NUMBER_OF_GODS', 0)))
             
@@ -219,7 +219,7 @@ class SwarmBootstrapper(Bootstrapper):
                                 self.already_bootstrapped[key].kill()
                                 self.already_bootstrapped[key].wait()
 
-                        self.terminate_aeron_media_driver()
+                        self.teardown()
 
                         sys.stdout.flush()
                         print_named("god", "God terminated.")

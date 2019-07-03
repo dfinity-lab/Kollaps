@@ -9,6 +9,7 @@ from need.NEEDlib.utils import DOCKER_SOCK, print_error_named, print_and_fail
 
 
 large_xml_file = True
+experiment_network = "top"
 
 
 class DockerComposeFileGenerator:
@@ -32,6 +33,8 @@ class DockerComposeFileGenerator:
 		print("      mode: global")
 		print("    environment:")
 		print("      NEED_UUID: '" + self.experiment_UUID + "'")
+		print("      OVERLAY_NAME: '" + self.graph.links[0].network + "'")
+		print("      NETWORK_NAME: '" + experiment_network + "'")
 		print("      NEED_ORCHESTRATOR: swarm")
 		print("      NUMBER_OF_GODS: " + str(number_of_gods))
 		print("      POOL_PERIOD: " + str(pool_period))

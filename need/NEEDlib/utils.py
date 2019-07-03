@@ -1,5 +1,4 @@
 
-import subprocess
 import sys
 import struct
 import string
@@ -17,6 +16,8 @@ SHORT_LIMIT = 65535
 DOCKER_SOCK = "/var/run/docker.sock"
 
 TOPOLOGY = "/topology.xml"
+# TOPOLOGY = "/home/daedalus/Documents/NEED/examples/topology5.xml:/topology.xml"
+
 LOCAL_IPS_FILE = "/local_ips.txt"
 REMOTE_IPS_FILE = "/remote_ips.txt"
 
@@ -142,7 +143,7 @@ def print_named(who, msg):
 
 
 def print_identified(graph, msg):
-	print("[Py (" + graph.root.name + ") " + str(get_own_ip(graph)) + "] " + str(msg), file=sys.stdout)
+	print("[Py (" + graph.root.name + ") " + str(graph.root.ip) + "] " + str(msg), file=sys.stdout)
 	sys.stdout.flush()
 
 

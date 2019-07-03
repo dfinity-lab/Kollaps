@@ -1,26 +1,25 @@
 
+import socket
+
 from time import time, sleep
 from threading import Lock
 from os import environ, getenv
+from typing import Dict, List
+from ctypes import CDLL, c_float, CFUNCTYPE, c_voidp, c_int, c_ulong, c_uint
 
 from need.NEEDlib.NetGraph import NetGraph
 from need.NEEDlib.EventScheduler import EventScheduler
-import need.NEEDlib.PathEmulation as PathEmulation
-from need.NEEDlib.CommunicationsManager import CommunicationsManager
+from need.NEEDlib.communications.AeronHandler import AeronHandler
 from need.NEEDlib.utils import ENVIRONMENT
 from need.NEEDlib.utils import print_named, print_message, print_identified
 
-import sys
-if sys.version_info >= (3, 0):
-	from typing import Dict, List, Tuple
-	
 
 # Global variable used within the callback to TCAL
 emuManager = None  # type: EmulationCore
 
 
-def collect_usage(ip, sent_bytes, qlen):  # qlen: number of packets in the qdisc, max is txqueuelen
-	emuManager.collect_own_flow(ip, sent_bytes)
+def collect_usage(src_ip, dst_ip, sent_bytes, qlen):  # qlen: number of packets in the qdisc, max is txqueuelen
+	emuManager.collect_own_flow(src_ip, dst_ip, sent_bytes, qlen)
 
 
 class EmulationCore:
@@ -36,12 +35,14 @@ class EmulationCore:
 	ONE_MINUS_ALPHA = 1-ALPHA
 	
 	
-	def __init__(self, net_graph, event_scheduler):
+	def __init__(self, manager_lib, net_graph, event_scheduler):
+		self.manager_lib = manager_lib
 		self.graph = net_graph				# type: NetGraph
 		self.scheduler = event_scheduler	# type: EventScheduler
 		self.active_paths = []				# type: List[NetGraph.Path]
 		self.active_paths_ids = []			# type: List[int]
 		self.flow_accumulator = {}			# type: Dict[str, List[List[int], int, int]]
+		self.flow_accumulator_callback = None
 		self.state_lock = Lock()
 		self.last_time = 0
 		# self.delayed_flows = 0
@@ -57,26 +58,44 @@ class EmulationCore:
 		# We need to give the callback a reference to ourselves (kind of hackish...)
 		global emuManager
 		emuManager = self
-		
-		self.comms = CommunicationsManager(self.collect_flow, self.graph, self.scheduler)
-		
-		
+
+		own_ip = socket.gethostbyname(socket.gethostname())
+
+		self.comms = AeronHandler(self.collect_flow, self.graph, self.scheduler, own_ip)
+
+
 	def initialize(self):
-		PathEmulation.init(CommunicationsManager.UDP_PORT)
-		
-		for service in self.graph.paths:
-			if isinstance(service, NetGraph.Service):
-				path = self.graph.paths[service]
-				PathEmulation.initialize_path(path)
+		for path_id, path in self.graph.paths_by_id.items():
+			
+			if len(path.links) > 0:
+				src_service = path.links[0].source
+				dst_service = path.links[-1].destination
 				
+				if isinstance(src_service, NetGraph.Service) and isinstance(dst_service, NetGraph.Service):
+					src_ip = src_service.ip
+					dst_ip = dst_service.ip
+					bandwidth = path.max_bandwidth
+					latency = path.latency
+					jitter = path.jitter
+					drop = path.drop
+					
+					self.manager_lib.initDestination(src_ip, dst_ip, int(bandwidth / 1000), c_float(latency), c_float(jitter), c_float(drop))
+		
+		
 		# LL: also drop everything that goes towards a host we don't see
 		for service in self.graph.services.values():
-			for serviceinstance in service:
-				if not serviceinstance in self.graph.paths and not serviceinstance.supervisor:
-					PathEmulation.disablePath(serviceinstance)
-					
-		PathEmulation.register_usage_callback(collect_usage)
-
+			for service_instance in service:
+				if service_instance not in self.graph.paths and not service_instance.supervisor:
+					self.manager_lib.initDestination(service_instance.ip, 10000, c_float(1), c_float(0), c_float(1))
+		
+		
+		CALLBACKTYPE = CFUNCTYPE(c_voidp, c_uint, c_uint, c_ulong, c_uint)
+		c_callback = CALLBACKTYPE(collect_usage)
+		self.flow_accumulator_callback = c_callback
+		self.manager_lib.registerFlowCollectorCallback(c_callback)
+		
+		self.manager_lib.publishChanges()
+		
 
 	# What check_active_flows does is call PathEmulation.update_usage(), which calls TCAL.update_usage(), which calls TC_updateUsage().
 	# This function requests a dump of the statistics kept by tc, which is done by calling update_class() once for each tc class.
@@ -91,6 +110,7 @@ class EmulationCore:
 		
 		try:
 			while True:
+				
 				# for i in range(EmulationCore.ITERATIONS_TO_INTEGRATE):		# CHANGED iteration count
 				sleep_time = EmulationCore.POOL_PERIOD - (time() - last_time)
 				
@@ -108,8 +128,11 @@ class EmulationCore:
 				self.comms.broadcast_flows(self.active_paths)
 				
 				with self.state_lock:
+					self.manager_lib.lock_changes()
 					self.apply_bandwidth()
-					# self.flow_accumulator.clear()		# CHANGED dont clear here
+					self.manager_lib.publishChanges()
+			
+			# self.flow_accumulator.clear()		# CHANGED dont clear here
 				
 		# except KeyboardInterrupt:
 		# 	print_identified(self.graph, "closed with KeyboardInterrupt")
@@ -163,15 +186,10 @@ class EmulationCore:
 				for index in link_indices:
 					active_links.append(self.graph.links_by_index[index])
 
-				# # FIXME unnecessary counter, for testing
-				# if flow[AGE] > 0:
-				# 	self.delayed_flows += 1
-
 				flow[AGE] += 1
 
 			else:
 				to_delete.append(key)
-
 
 		# Now apply the RTT Aware Min-Max to calculate the new BW
 		for id in self.active_paths_ids:
@@ -182,10 +200,11 @@ class EmulationCore:
 					rtt_reverse_sum = 0
 					for flow in link.flows:
 						rtt_reverse_sum += (1.0 / flow[RTT])
+						
 					max_bandwidth_on_link = []
 					# calculate our bandwidth
 					max_bandwidth_on_link.append(((1.0 / link.flows[0][RTT]) / rtt_reverse_sum) * link.bandwidth_bps)
-
+					
 					# Maximize link utilization to 100%
 					spare_bw = link.bandwidth_bps - max_bandwidth_on_link[0]
 					our_share = max_bandwidth_on_link[0] / link.bandwidth_bps
@@ -201,7 +220,7 @@ class EmulationCore:
 							hungry_usage_sum += max_bandwidth_on_link[i] / link.bandwidth_bps
 						else:
 							spare_bw -= flow[BW]
-
+							
 					normalized_share = our_share / hungry_usage_sum  # we get a share of the spare proportional to our RTT
 					maximized = max_bandwidth_on_link[0] + (normalized_share * spare_bw)
 					if maximized > max_bandwidth_on_link[0]:
@@ -210,7 +229,10 @@ class EmulationCore:
 					# If this link restricts us more than previously try to assume this bandwidth as the max
 					if max_bandwidth_on_link[0] < max_bandwidth:
 						max_bandwidth = max_bandwidth_on_link[0]
-
+						
+						
+				print_named("FAIL", "made it here")
+				
 				if max_bandwidth <= path.max_bandwidth and max_bandwidth != path.current_bandwidth:
 					if max_bandwidth <= path.current_bandwidth:
 						path.current_bandwidth = max_bandwidth  # if its less then we now for sure it is correct
@@ -218,9 +240,19 @@ class EmulationCore:
 						#  if it is more then we have to be careful, it might be a spike due to lost metadata
 						path.current_bandwidth = EmulationCore.ONE_MINUS_ALPHA * path.current_bandwidth + \
 												 EmulationCore.ALPHA * max_bandwidth
-					service = path.links[-1].destination
-					PathEmulation.change_bandwidth(service, path.current_bandwidth)
-
+					
+					src_service = path.links[0].source
+					dst_service = path.links[-1].destination
+					
+					
+					# FIXME
+					print_named("FAIL", f"{src_service.ip} -> {dst_service.ip}, bw {int(path.current_bandwidth/1000)}")
+					
+					# PathEmulation.change_bandwidth(service, path.current_bandwidth)
+					self.manager_lib.changeBandwidth(src_service.ip, dst_service.ip, int(path.current_bandwidth/1000))
+					
+					
+					
 		# clear the state on the graph
 		for link in active_links:
 			link.flows.clear()
@@ -228,30 +260,38 @@ class EmulationCore:
 		# delete old flows outside of dictionary iteration
 		for key in to_delete:
 			del self.flow_accumulator[key]
-
 			
+	
 	def check_active_flows(self):
 		current_time = time()
 		self.check_flows_time_delta = current_time - self.last_time
 		self.last_time = current_time
-		PathEmulation.update_usage()
+		
+		self.manager_lib.pullFlows()
 		
 		
-	def collect_own_flow(self, ip, sent_bytes):
-		host = self.graph.hosts_by_ip[ip]
+	def collect_own_flow(self, src_ip, dst_ip, sent_bytes, qlen):
+		
+		# FIXME
+		if dst_ip == 0:
+			return
+		
+		src_host = self.graph.hosts_by_ip[src_ip]
+		dst_host = self.graph.hosts_by_ip[dst_ip]
+		
 		# Calculate current throughput
-		if sent_bytes < host.last_bytes:
+		if sent_bytes < dst_host.last_bytes:
 			bytes_delta = sent_bytes  # in case of overflow ignore the bytes before the overflow
 		else:
-			bytes_delta = sent_bytes - host.last_bytes
+			bytes_delta = sent_bytes - dst_host.last_bytes
 			
 		bits = bytes_delta * 8
 		throughput = bits / self.check_flows_time_delta
-		host.last_bytes = sent_bytes
+		dst_host.last_bytes = sent_bytes
 		
 		# Get the network path
-		if host in self.graph.paths:  # some services are not reachable, test for that
-			path = self.graph.paths[host]
+		if dst_host in self.graph.paths[src_host]:  # some services are not reachable, test for that
+			path = self.graph.paths[src_host][dst_host]
 			
 			# Check if this is an active flow
 			if throughput <= (path.max_bandwidth * EmulationCore.ERROR_MARGIN):

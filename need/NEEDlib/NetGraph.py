@@ -1,14 +1,14 @@
 
-from kubernetes import client, config
-from time import sleep, time
-from math import sqrt
-from os import environ
-from threading import Lock
 import re
 import os
 import dns.resolver
 
-from need.NEEDlib.utils import print_and_fail, ip2int
+from kubernetes import client, config
+from time import sleep, time
+from math import sqrt
+from threading import Lock
+
+from need.NEEDlib.utils import print_named, print_and_fail, ip2int
 
 import sys
 if sys.version_info >= (3, 0):
@@ -18,25 +18,26 @@ if sys.version_info >= (3, 0):
 class NetGraph:
     def __init__(self):
         # Note to future developers self.services can probably be completely replaced with self.hosts_by_ip
-        self.services = {}  # type: Dict[str,List[NetGraph.Service]]
-        self.hosts_by_ip = {} # type: Dict[int, NetGraph.Service]
-        self.bridges = {}  # type: Dict[str,List[NetGraph.Service]]
-        self.links = []  # type: List[NetGraph.Link]
-        self.links_by_index = {} # type: Dict[int, NetGraph.Link] LL: only used for performance reasons in path_change
-        self.link_counter = 0  # increment counter that will give each link an index
-        self.path_counter = 0  # increment counter that will give each path an id
-        self.removed_links = [] #LL; type: List[NetGraph.Link]
-        self.removed_bridges = {} #LL; type: Dict[str,List[NetGraph.Service]]; list has length at most 1
+        self.services = {}          # type: Dict[str, List[NetGraph.Service]]
+        self.hosts_by_ip = {}       # type: Dict[int, NetGraph.Service]
+        self.bridges = {}           # type: Dict[str, List[NetGraph.Service]]
+        self.links = []             # type: List[NetGraph.Link]
+        self.links_by_index = {}    # type: Dict[int, NetGraph.Link] # LL: only used for performance reasons in path_change
+        self.link_counter = 0       # increment counter that will give each link an index
+        self.path_counter = 0       # increment counter that will give each path an id
+        self.removed_links = []     # type: List[NetGraph.Link] # LL
+        self.removed_bridges = {}   # type: Dict[str,List[NetGraph.Service]]; # LL list has length at most 1
 
-        self.networks = []  # type: List[str]
-        self.supervisors = []  # type: List[NetGraph.Service]
+        self.networks = []          # type: List[str]
+        self.supervisors = []       # type: List[NetGraph.Service]
 
-        self.root = None  # type: NetGraph.Service
-        self.paths = {}  # type: Dict[NetGraph.Node,NetGraph.Path]
-        self.paths_by_id = {} # type: Dict[int, NetGraph.Path]
+        # self.root = None  # type: NetGraph.Service
+        # self.paths = {}             # type: Dict[NetGraph.Node, Dict[NetGraph.Node, NetGraph.Path]]
+        self.paths = {}             # type: Dict[NetGraph.Service, Dict[NetGraph.Service, NetGraph.Path]]
+        self.paths_by_id = {}       # type: Dict[int, NetGraph.Path]
 
         self.bandwidth_re = re.compile("([0-9]+)([KMG])bps")
-        self.bootstrapper = ""  # type: str
+        self.bootstrapper = ""      # type: str
 
     class Node(object):
         def __init__(self, name, shared):
@@ -55,7 +56,7 @@ class NetGraph:
             self.image = image
             self.command = command
             self.ip = 167772161  # to be filled in later (this is just a value that can safely be converted to an IP)
-            self.replica_id = 0 # to be filled in later (after we sort by ip)
+            self.replica_id = 0  # to be filled in later (after we sort by ip)
             self.replica_count = count
             self.last_bytes = 0  # number of bytes sent to this service
             self.supervisor = False
@@ -72,7 +73,7 @@ class NetGraph:
         def __init__(self, source, destination, latency, jitter, drop, bandwidth, bps, network):
             self.lock = Lock()
             self.index = 0
-            self.source = source  # type: NetGraph.Node
+            self.source = source            # type: NetGraph.Node
             self.destination = destination  # type: NetGraph.Node
             try:
                 self.latency = float(latency)
@@ -133,15 +134,18 @@ class NetGraph:
             self.RTT = self.latency*2
             self.drop = (1.0-total_not_drop_probability)
 
-        def prettyprint(self):
+        def pretty_print(self):
             if len(self.links) > 0 and isinstance(self.links[-1].destination, NetGraph.Service):
                 pretty = "I am a path and these are my links:\n"
                 for link in self.links:
                     pretty += "  " + link.source.name + "--" + link.destination.name + "\n"
                 pretty += "    These are my end-to-end properties: bandwidth=" + '{:,}'.format(self.max_bandwidth).replace(',', '\'') + ", latency = " + str(self.latency) + ", jitter = " + str(self.jitter)  + ", drop = " + str(self.drop) + "\n"
                 return pretty
+            
             else:
-                return None
+                # FIXME return None
+                return ""
+
 
     def get_nodes(self, name):
         if name in self.services:
@@ -151,6 +155,7 @@ class NetGraph:
         else:
             return []
 
+
     def new_service(self, name, image, command, shared, reuse, count):
         service = NetGraph.Service(name, image, command, shared, reuse, count)
         if len(self.get_nodes(name)) == 0:
@@ -159,9 +164,11 @@ class NetGraph:
             self.get_nodes(name).append(service)
         return service
 
+
     def set_supervisor(self, service):
         service.supervisor = True
         service.network = self.networks[0]
+
 
     def new_bridge(self, name):
         bridge = NetGraph.Bridge(name)
@@ -170,6 +177,7 @@ class NetGraph:
         else:
             print_and_fail("Cant add bridge with name: " + name + ". Another node with the same name already exists")
         return bridge
+
 
     def new_link(self, source, destination, latency, jitter, drop, bandwidth, network):
         if network not in self.networks:
@@ -186,6 +194,7 @@ class NetGraph:
                 node.attach_link(link)
                 self.links_by_index[link.index] = link
 
+
     def bandwidth_in_bps(self, bandwidth_string):
         if re.match(self.bandwidth_re, bandwidth_string) is None:
             print_and_fail("Bandwidth is not properly specified, accepted values must be: [0-9]+[KMG]bps")
@@ -199,6 +208,30 @@ class NetGraph:
         if multiplier == 'G':
             return int(base) * 1000 * 1000 * 1000
 
+
+    def assign_ips(self, names_and_ips):
+        """
+        Finds the hosts from the dictionary in the graph and sets its IP address.
+        :param names_and_ips: Dict[service_name, ip]
+        :return: None
+        """
+
+        experimentUUID = os.environ.get('NEED_UUID', '')
+        prefix = os.getenv("NETWORK_NAME", "top")
+        docker_resolver = dns.resolver.Resolver(configure=False)
+        docker_resolver.nameservers = ['127.0.0.11']
+
+        for service_name, hosts in self.services.items():
+            for i in range(len(hosts)):
+                complete_name = prefix + "_" + service_name + "-" + experimentUUID + "." + str(i+1)
+
+                ip_as_int = ip2int(names_and_ips[complete_name])
+                hosts[i].ip = ip_as_int
+                hosts[i].replica_id = i
+                self.hosts_by_ip[ip_as_int] = hosts[i]
+
+
+
     def resolve_hostnames(self):
 
         orchestrator = os.getenv('NEED_ORCHESTRATOR', 'swarm')
@@ -206,7 +239,7 @@ class NetGraph:
             # kubernetes version
             # we are only talking to the kubernetes API
 
-            experimentUUID = environ.get('NEED_UUID', '')
+            experimentUUID = os.environ.get('NEED_UUID', '')
             config.load_incluster_config()
             kubeAPIInstance = client.CoreV1Api()
             need_pods = kubeAPIInstance.list_namespaced_pod('default')
@@ -245,7 +278,7 @@ class NetGraph:
             # So to get the names to resolve properly we need to force to use dockers internal nameserver
             # 127.0.0.11
 
-            experimentUUID = environ.get('NEED_UUID', '')
+            experimentUUID = os.environ.get('NEED_UUID', '')
             docker_resolver = dns.resolver.Resolver(configure=False)
             docker_resolver.nameservers = ['127.0.0.11']
             for service in self.services:
@@ -269,7 +302,124 @@ class NetGraph:
 
 
     def calculate_shortest_paths(self):
-#        start = time()
+        # path_index = int(f"{source}{destination}")
+        # path_index = f"{source}-{destination}"
+
+        start = time()
+
+        INFINITE = float("inf")
+
+        # FIXME multiprocess this (each iteration can happen in a separate process)
+        # run dijkstra’s shortest paths for every service in the topology
+        for source_ip_as_int, source_service_object in self.hosts_by_ip.items():
+
+            distances = {}
+            queue = []
+
+            # add every service and bridge to the queue
+            for service_ip_as_int, service_object in self.hosts_by_ip.items():
+                distance = INFINITE if service_object != source_service_object else 0
+                queue.append([distance, service_object])
+                distances[service_object] = distance
+                    
+            for bridge_id, list_of_bridges in self.bridges.items():
+                bridge = list_of_bridges[0]
+                queue.append([INFINITE, bridge])
+                distances[bridge] = INFINITE
+
+
+            self.paths[source_service_object] = {}
+            self.paths[source_service_object][source_service_object] = NetGraph.Path([], self.path_counter)
+            self.paths_by_id[self.path_counter] = self.paths[source_service_object][source_service_object]
+            self.path_counter += 1
+
+            while len(queue) > 0:
+                
+                queue.sort(key=lambda ls: ls[0])
+                node = queue.pop(0)[1]  # type: NetGraph.Node
+                
+                for link in node.links:
+                    alt = distances[node] + 1
+
+                    # if destination is a bridge, it could have been removed
+                    if link.destination in distances:
+
+                        if alt < distances[link.destination]:
+
+                            next_node = link.destination
+                            distances[next_node] = alt
+
+                            # append to the previous path
+                            path = self.paths[source_service_object][node].links[:]
+                            path.append(link)
+
+                            self.paths[source_service_object][next_node] = NetGraph.Path(path, self.path_counter)
+                            self.paths_by_id[self.path_counter] = self.paths[source_service_object][next_node]
+                            self.path_counter += 1
+
+                            # find the node in Q and change its priority
+                            for entry in queue:
+                                if entry[1] == next_node:
+                                    entry[0] = alt
+
+
+        end = time()
+        print_named("NetGraph", "shortest paths found in " + str(end - start))
+        # print_named("PATHS", self.paths_to_string())
+
+
+    def paths_to_string(self):
+        result = "-"*80 + "\n"
+        
+        for path_id, path in self.paths_by_id.items():
+            if len(path.links) > 0:
+                src = path.links[0].source
+                dst = path.links[-1].destination
+                result += "Paths from " + str(src.name)
+                if isinstance(src, NetGraph.Service):
+                    result += "_" + str(src.replica_id)
+    
+                result += "to " + dst.name
+                if isinstance(dst, NetGraph.Service):
+                    result += "_" + str(dst.replica_id)
+        
+                result += "\n"
+                # result += path.pretty_print()
+                
+            else:
+                # print_named("FAIL", "no links in path.")
+                pass
+                
+        return result + "-"*80
+    
+    
+    # def paths_to_string(self):
+    #     result = ""
+    #
+    #     for source, paths in self.paths.items():
+    #         result += "\n" + "-"*80 + "\nPaths from " + str(source.name) + "_" + str(source.replica_id) + ":\n"
+    #
+    #         for destination, path in paths.items():
+    #             result += "to " + destination.name
+    #             if isinstance(destination, NetGraph.Service):
+    #                 result += "_" + str(destination.replica_id)
+    #
+    #             result += "\n"
+    #             result += path.pretty_print()
+    #
+    #         result += "\n" + "-"*80
+    #
+    #     return result
+
+"""
+    def print_links(self):
+        nice = "I am a graph and these are my links:\n"
+        for link in self.links:
+            nice += "Link index " + str(link.index) + ": " + link.source.name + "--" + link.destination.name + "\n"
+        print(nice, file=sys.stdout)
+        
+        
+    def deprecated_calculate_shortest_paths(self):
         # Dijkstra's shortest path implementation
         # Distance is number of hops
         if self.root is None:
@@ -278,6 +428,7 @@ class NetGraph:
         inf = float("inf")
         dist = {}
         Q = []
+
         for service in self.services:
             hosts = self.services[service]
             for host in hosts:
@@ -287,6 +438,7 @@ class NetGraph:
                 entry = [distance, host]
                 Q.append(entry)
                 dist[host] = distance
+
         for bridge in self.bridges:
             b = self.bridges[bridge][0]
             Q.append([inf, b])
@@ -295,13 +447,18 @@ class NetGraph:
         self.paths[self.root] = NetGraph.Path([], self.path_counter)
         self.paths_by_id[self.path_counter] = self.paths[self.root]
         self.path_counter += 1
+
         while len(Q) > 0:
+
             Q.sort(key=lambda ls: ls[0])
             u = Q.pop(0)[1]  # type: NetGraph.Node
+
             for link in u.links:
                 alt = dist[u] + 1
-                if link.destination in dist: # if destination is a bridge, it could have been removed
+
+                if link.destination in dist:  # if destination is a bridge, it could have been removed
                     if alt < dist[link.destination]:
+
                         node = link.destination
                         dist[node] = alt
                         # append to the previous path
@@ -310,26 +467,9 @@ class NetGraph:
                         self.paths[node] = NetGraph.Path(path, self.path_counter)
                         self.paths_by_id[self.path_counter] = self.paths[node]
                         self.path_counter += 1
+
                         for e in Q:  # find the node in Q and change its priority
                             if e[1] == node:
                                 e[0] = alt
-#        end = time()
-#        print("shortest paths found in " + str(end - start))
-
-    def print_paths(self):
-        nice = ""
-        for node, path in self.paths.items():
-            nice += "To node " + node.name
-            if isinstance(node, NetGraph.Service):
-                nice += "_" + str(node.replica_id)
-            nice += "\n"
-            nice += path.prettyprint()
-        return "---------------------\nPaths from node " + str(self.root.name) + "_" + str(self.root.replica_id) + ":\n" + "---------------------\n" + nice + "---------------------"
-
-"""
-    def print_links(self):
-        nice = "I am a graph and these are my links:\n"
-        for link in self.links:
-            nice += "Link index " + str(link.index) + ": " + link.source.name + "--" + link.destination.name + "\n"
-        print(nice, file=sys.stdout)
+                                
 """

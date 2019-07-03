@@ -1,9 +1,10 @@
+
 from need.NEEDlib.NetGraph import NetGraph
 from threading import Lock
+from time import time, sleep
 from ctypes import CDLL, c_float, CFUNCTYPE, c_voidp, c_int, c_ulong, c_uint
-from os import path
 
-import sys
+import sys, os
 if sys.version_info >= (3, 0):
     from typing import Dict, List
 
@@ -12,17 +13,63 @@ class PEState:
     shutdown = False
     TCAL = None
     callback = None  # We need to keep a reference otherwise gets garbage collected causing crashes
-
-def init(controll_port):
+    own_ip = '0.0.0.0'
+    
+    
+def init(controll_port, graph):
     with PEState.PathLock:
         if not PEState.shutdown:
             # Get the libTCAL.so full path from the current file
-            filepath = path.abspath(__file__)
+            filepath = os.path.abspath(__file__)
             folderpath = "/".join(filepath.split('/')[0:-2])
             tcalPath = folderpath + "/TCAL/libTCAL.so"
 
             PEState.TCAL = CDLL(tcalPath)
-            PEState.TCAL.init(controll_port, 1000)  # 1000 is the txquelen (unit is packets)
+            PEState.TCAL.init(int(controll_port), 1000)  # 1000 is the txquelen (unit is packets)
+
+    for service in graph.paths:
+        if isinstance(service, NetGraph.Service):
+            path = graph.paths[service]
+            initialize_path(path)
+
+    # LL: also drop everything that goes towards a host we don't see
+    for service in graph.services.values():
+        for serviceinstance in service:
+            if not serviceinstance in graph.paths and not serviceinstance.supervisor:
+                disablePath(serviceinstance)
+    # FIXME
+    # PathEmulation.register_usage_callback(collect_usage)
+
+
+def emulation_loop():
+    
+    POOL_PERIOD = float(os.getenv('POOL_PERIOD', 0.05))  # in seconds
+    last_time = time()
+    
+    # check_active_flows()  # to prevent bug where data has already passed through the filters before
+    last_time = time()
+    
+    while True:
+        sleep_time = POOL_PERIOD - (time() - last_time)
+        
+        if sleep_time > 0.0:
+            sleep(sleep_time)
+        
+        last_time = time()
+        
+        # FIXME collect flows info
+        # FIXME
+        #   wait for lock on owned buffer
+        #   write to the buffer
+        #   release lock
+        # FIXME
+        #   wait for lock on shared buffer
+        #   read changes to apply from the buffer
+        #   apply bw restrictions
+        
+        # with self.state_lock:
+        #     self.apply_bandwidth()
+
 
 
 def initialize_path(path):

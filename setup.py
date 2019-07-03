@@ -10,8 +10,11 @@ setup(name='need',
           'need',
           'need.NEEDlib.deploymentGenerators',
           'need.NEEDlib.bootstrapping',
+          'need.NEEDlib.communications',
+          'need.NEEDlib.NEEDDomainLanguage',
           'need.NEEDlib',
-          'need.TCAL'
+          'need.TCAL',
+          'need.shm'
       ],
       install_requires=[
           'dnspython',
@@ -23,14 +26,15 @@ setup(name='need',
       package_data={
           'need.TCAL': ['libTCAL.so'],
           'need': ['static/css/*', 'static/js/*',  'templates/*.html'],
+          'need.shm': ['EnforcerSharedMem.so', 'ManagerSharedMem.so'],
       },
       entry_points={
           'console_scripts': ['NEEDdeploymentGenerator=need.deploymentGenerator:main',
                               'NEEDDashboard=need.Dashboard:main',
                               'NEEDLogger=need.Logger:main',
-                              'NEEDemulationManager=need.EmulationManager:main',
+                              'EmulationManager=need.EmulationManager:main',
+                              'EmulationEnforcer=need.EmulationEnforcer:main',
                               'NEEDbootstrapper=need.bootstrapper:main',
                               'NDLTranslator=need.NDLTranslator:main'],
       },
       zip_safe=False)
-      
