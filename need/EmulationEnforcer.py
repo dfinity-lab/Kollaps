@@ -154,8 +154,11 @@ def main():
         last_time = time()
 
         enforcer_lib.pullChanges()
+        
         TCALHandler.update_usage()
-
+        
+        # enforcer_lib.publishFlows()
+        
 
 if __name__ == '__main__':
     main()

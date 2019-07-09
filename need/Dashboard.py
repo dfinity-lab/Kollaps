@@ -26,10 +26,10 @@ app.secret_key = 'sdjh234hj23409ea9[u-ad=12-eqhkdjaadj23jaksldj23objadskjalskdj-
 
 
 class DashboardState:
-    graph = None  # type: NetGraph
+    graph = None                        # type: NetGraph
     lock = Lock()
-    hosts = {}  # type: Dict[NetGraph.Service, Host]
-    flows = OrderedDict() # type: Dict[str, Tuple[int, int, int]]
+    hosts = {}                          # type: Dict[NetGraph.Service, Host]
+    flows = OrderedDict()               # type: Dict[str, Tuple[int, int, int]]
     largest_produced_gap = -1
     largest_produced_gap_average = -1
     lost_packets = -1

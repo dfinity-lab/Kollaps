@@ -56,28 +56,29 @@ void init(unsigned int numberOfEnforcers) {
 
 	// initialize structure counters and indexes
 	master->enforcer_count = numberOfEnforcers;
+	
     __atomic_store_n(&(master->writing_in_progress), 1, __ATOMIC_RELAXED);
-	manager.count = 0;
-	manager.buffer_idx = 0;
-	for(i = 0; i < MAX_BUFFERS; i++) {
+	for(i = 0; i < MAX_ENFORCERS; i++) {
     	snprintf(str_buffer, 64, ENFORCER_BUFFER, i);
 		if ((semaphores.enforcers[i] = sem_open(str_buffer, O_CREAT, 0660, 0)) == SEM_FAILED)
 		    printAndFail("[C (manager)] failed sem_open() for enforcer_buffer_%d");
-
+		    
         sem_post(semaphores.enforcers[i]);
-
-	    enforcer(i).count = 0;
-	    enforcer(i).buffer_idx = 0;
+        
+	    enforcer(i).flows_count = 0;
+	    enforcer(i).flows_idx = 0;
+	    enforcer(i).changes_count = 0;
+	    enforcer(i).changes_idx = 0;
 	}
-
+	
     // semaphores to control pulling of changes
 	if ((semaphores.read_changes = sem_open(READ_CHANGES_MUTEX_NAME, O_CREAT, 0660, 0)) == SEM_FAILED)
 		printAndFail("[C (manager)] failed sem_open() for read_changes_sem");
 
 	if ((semaphores.write_changes = sem_open(WRITE_CHANGES_MUTEX_NAME, O_CREAT, 0660, 1)) == SEM_FAILED)
 		printAndFail("[C (manager)] failed sem_open() for write_changes_sem");
-
-
+		
+		
     // mutual exclusion semaphore for enforcer buffer acquisition
 	if ((semaphores.id_acquisition = sem_open(ID_ACQUISITION_MUTEX_NAME, O_CREAT, 0660, 0)) == SEM_FAILED)
 		printAndFail("[C (manager)] failed sem_open() for id_acquisition_sem");
@@ -102,35 +103,36 @@ void pullFlows() {
     unsigned long bandwidth;
     unsigned int qlen;
 
-    for (i = 0; i < master->enforcer_count; i++) {
+//    for (i = 0; i < master->enforcer_count; i++) {
+    for (i = 0; i < MAX_ENFORCERS; i++) {
 
-        if (sem_wait(semaphores.enforcers[i]) == -1)
-		    printAndFail("[C (manager)] failed sem_wait() for enforcer_semaphore");
+//        if (sem_wait(semaphores.enforcers[i]) == -1)
+//		    printAndFail("[C (manager)] failed sem_wait() for enforcer_semaphore");
 
         read_idx = 0;
-        for (j = 0; j < enforcer(i).count; j++) {
-            dst_ip = getUInt32(read_idx, enforcer(i).buffer);
+        for (j = 0; j < enforcer(i).flows_count; j++) {
+            dst_ip = getUInt32(read_idx, enforcer_flows_buff(i));
             read_idx += sizeof(unsigned int);
 
-            bandwidth = getUInt64(read_idx, enforcer(i).buffer);
+            bandwidth = getUInt64(read_idx, enforcer_flows_buff(i));
             read_idx += sizeof(unsigned long);
 
-            qlen = getUInt32(read_idx, enforcer(i).buffer);
+            qlen = getUInt32(read_idx, enforcer_flows_buff(i));
             read_idx += sizeof(unsigned int);
 
-            printf("[C (manager)] << newFlow( %d, %d, %ld, %d ) from %d\n", enforcer(i).ip, dst_ip, bandwidth, qlen, i);
+            printf("[C (manager)] << newFlow %d -> %d ( %ld, %d ) from %d\n", enforcer(i).ip, dst_ip, bandwidth, qlen, i);
             (*flowCollectorCallback)(enforcer(i).ip, dst_ip, bandwidth, qlen);
         }
 
-        enforcer(i).count = 0;
-        enforcer(i).buffer_idx = 0;
-//        __atomic_store_n(&(enforcer(i).count), 0, __ATOMIC_RELAXED);
-//        __atomic_store_n(&(enforcer(i).buffer_idx), 0, __ATOMIC_RELAXED);
+//        enforcer(i).flows_count = 0;
+//        enforcer(i).flows_idx = 0;
+        __atomic_store_n(&(enforcer(i).flows_count), 0, __ATOMIC_RELAXED);
+        __atomic_store_n(&(enforcer(i).flows_idx), 0, __ATOMIC_RELAXED);
 
         fflush(stdout);
 
-        if (sem_post(semaphores.enforcers[i]) == -1)
-		    printAndFail("[C (manager)] failed sem_post() for enforcer_semaphore");
+//        if (sem_post(semaphores.enforcers[i]) == -1)
+//		    printAndFail("[C (manager)] failed sem_post() for enforcer_semaphore");
     }
 }
 
@@ -146,9 +148,6 @@ void lock_changes() {
 
     __atomic_store_n(&(master->writing_in_progress), 1, __ATOMIC_RELAXED);
 
-    manager.count = 0;
-    manager.buffer_idx = 0;
-
 //    printf("[C (manager)] locked changes buffer.\n");
 //    fflush(stdout);
 }
@@ -157,14 +156,21 @@ void publishChanges() {
     __atomic_store_n(&(master->writing_in_progress), 0, __ATOMIC_RELAXED);
 
     int i = 0;
-    for (i = 0; i <= master->enforcer_count; i++)
+    for (i = 0; i <= master->enforcer_count; i++) {
         if (sem_post(semaphores.read_changes) == -1)
             printAndFail("[C (manager)] failed sem_post() for read_changes_sem");
-
-    if (manager.count > 0) {
-        printf("[C (manager)] published changes and freed buffer.\n");
-        fflush(stdout);
     }
+
+//    printf("[C (manager)] published changes and freed buffer.\n");
+//    fflush(stdout);
+
+//    int aux = manager.write_buffer;
+//    manager.write_buffer = manager.read_buffer;
+//    manager.read_buffer = manager.write_buffer;
+
+//    manager.active_buffer = (manager.active_buffer + 1) % MAX_BUFFERS;
+
+
 
 //    // finished writing, release semaphore #readers times
 //    int value;
@@ -182,92 +188,100 @@ void publishChanges() {
 /******************************************************************************************************/
 
 void initDestination(unsigned int src_ip, unsigned int dst_ip, unsigned long bandwidth, float latency, float jitter, float packetLoss) {
-    printf("[C (manager)] << initDestination( %d, %d, %ld, %f, %f, %f )\n", src_ip, dst_ip, bandwidth, latency, jitter, packetLoss);
+    printf("[C (manager)] << initDestination %d -> %d ( %ld, %f, %f, %f )\n", src_ip, dst_ip, bandwidth, latency, jitter, packetLoss);
     fflush(stdout);
+    
+    struct shm_element *enforcer = &enforcer(src_ip % MAX_ENFORCERS);
+    
+    putFunction(enforcer->changes_idx, enforcer->changes_buffer, INIT_DESTINATION);
+    enforcer->changes_idx += sizeof(enum function);
+    
+//    putUInt32(enforcer->changes_idx, enforcer->changes_buffer, src_ip);
+//    enforcer->changes_idx += sizeof(unsigned int);
 
-    putFunction(manager.buffer_idx, manager.buffer, INIT_DESTINATION);
-    manager.buffer_idx += sizeof(enum function);
+    putUInt32(enforcer->changes_idx, enforcer->changes_buffer, dst_ip);
+    enforcer->changes_idx += sizeof(unsigned int);
     
-    putUInt32(manager.buffer_idx, manager.buffer, src_ip);
-    manager.buffer_idx += sizeof(unsigned int);
+    putUInt64(enforcer->changes_idx, enforcer->changes_buffer, bandwidth);
+    enforcer->changes_idx += sizeof(unsigned long);
+    
+    putFloat(enforcer->changes_idx, enforcer->changes_buffer, latency);
+    enforcer->changes_idx += sizeof(float);
+    
+    putFloat(enforcer->changes_idx, enforcer->changes_buffer, jitter);
+    enforcer->changes_idx += sizeof(float);
+    
+    putFloat(enforcer->changes_idx, enforcer->changes_buffer, packetLoss);
+    enforcer->changes_idx += sizeof(float);
 
-    putUInt32(manager.buffer_idx, manager.buffer, dst_ip);
-    manager.buffer_idx += sizeof(unsigned int);
-    
-    putUInt64(manager.buffer_idx, manager.buffer, bandwidth);
-    manager.buffer_idx += sizeof(unsigned long);
-    
-    putFloat(manager.buffer_idx, manager.buffer, latency);
-    manager.buffer_idx += sizeof(float);
-    
-    putFloat(manager.buffer_idx, manager.buffer, jitter);
-    manager.buffer_idx += sizeof(float);
-    
-    putFloat(manager.buffer_idx, manager.buffer, packetLoss);
-    manager.buffer_idx += sizeof(float);
-
-    manager.count++;
+    enforcer->changes_count++;
 }
 
 
 void changeBandwidth(unsigned int src_ip, unsigned int dst_ip, unsigned long bandwidth) {
-    printf("[C (manager)] << changeBandwidth( %d, %d, %ld )\n", src_ip, dst_ip, bandwidth);
+    printf("[C (manager)] << changeBandwidth %d -> %d ( %ld )\n", src_ip, dst_ip, bandwidth);
     fflush(stdout);
 
-    putFunction(manager.buffer_idx, manager.buffer, CHANGE_BANDWIDTH);
-    manager.buffer_idx += sizeof(enum function);
+    struct shm_element *enforcer = &enforcer(src_ip % MAX_ENFORCERS);
 
-    putUInt32(manager.buffer_idx, manager.buffer, src_ip);
-    manager.buffer_idx += sizeof(unsigned int);
+    putFunction(enforcer->changes_idx, enforcer->changes_buffer, CHANGE_BANDWIDTH);
+    enforcer->changes_idx += sizeof(enum function);
 
-    putUInt32(manager.buffer_idx, manager.buffer, dst_ip);
-    manager.buffer_idx += sizeof(unsigned int);
+//    putUInt32(enforcer->changes_idx, enforcer->changes_buffer, src_ip);
+//    enforcer->changes_idx += sizeof(unsigned int);
 
-    putUInt64(manager.buffer_idx, manager.buffer, bandwidth);
-    manager.buffer_idx += sizeof(unsigned long);
+    putUInt32(enforcer->changes_idx, enforcer->changes_buffer, dst_ip);
+    enforcer->changes_idx += sizeof(unsigned int);
 
-    manager.count++;
+    putUInt64(enforcer->changes_idx, enforcer->changes_buffer, bandwidth);
+    enforcer->changes_idx += sizeof(unsigned long);
+
+    enforcer->changes_count++;
 }
 
 void changeLoss(unsigned int src_ip, unsigned int dst_ip, float packetLoss) {
-    printf("[C (manager)] << changeBandwidth( %d, %d, %f )\n", src_ip, dst_ip, packetLoss);
+    printf("[C (manager)] << changeBandwidth %d -> %d ( %f )\n", src_ip, dst_ip, packetLoss);
     fflush(stdout);
 
-    putFunction(manager.buffer_idx, manager.buffer, CHANGE_LOSS);
-    manager.buffer_idx += sizeof(enum function);
+    struct shm_element *enforcer = &enforcer(src_ip % MAX_ENFORCERS);
 
-    putUInt32(manager.buffer_idx, manager.buffer, src_ip);
-    manager.buffer_idx += sizeof(unsigned int);
+    putFunction(enforcer->changes_idx, enforcer->changes_buffer, CHANGE_LOSS);
+    enforcer->changes_idx += sizeof(enum function);
 
-    putUInt32(manager.buffer_idx, manager.buffer, dst_ip);
-    manager.buffer_idx += sizeof(unsigned int);
+//    putUInt32(enforcer->changes_idx, enforcer->changes_buffer, src_ip);
+//    enforcer->changes_idx += sizeof(unsigned int);
 
-    putFloat(manager.buffer_idx, manager.buffer, packetLoss);
-    manager.buffer_idx += sizeof(float);
+    putUInt32(enforcer->changes_idx, enforcer->changes_buffer, dst_ip);
+    enforcer->changes_idx += sizeof(unsigned int);
 
-    manager.count++;
+    putFloat(enforcer->changes_idx, enforcer->changes_buffer, packetLoss);
+    enforcer->changes_idx += sizeof(float);
+
+    enforcer->changes_count++;
 }
 
 void changeLatency(unsigned int src_ip, unsigned int dst_ip, float latency, float jitter) {
-    printf("[C (manager)] << changeLatency( %d, %d, %f, %f )\n", src_ip, dst_ip, latency, jitter);
+    printf("[C (manager)] << changeLatency %d -> %d ( %f, %f )\n", src_ip, dst_ip, latency, jitter);
     fflush(stdout);
 
-    putFunction(manager.buffer_idx, manager.buffer, CHANGE_LATENCY);
-    manager.buffer_idx += sizeof(enum function);
+    struct shm_element *enforcer = &enforcer(src_ip % MAX_ENFORCERS);
 
-    putUInt32(manager.buffer_idx, manager.buffer, src_ip);
-    manager.buffer_idx += sizeof(unsigned int);
+    putFunction(enforcer->changes_idx, enforcer->changes_buffer, CHANGE_LATENCY);
+    enforcer->changes_idx += sizeof(enum function);
 
-    putUInt32(manager.buffer_idx, manager.buffer, dst_ip);
-    manager.buffer_idx += sizeof(unsigned int);
+//    putUInt32(enforcer->changes_idx, enforcer->changes_buffer, src_ip);
+//    enforcer->changes_idx += sizeof(unsigned int);
 
-    putFloat(manager.buffer_idx, manager.buffer, latency);
-    manager.buffer_idx += sizeof(float);
+    putUInt32(enforcer->changes_idx, enforcer->changes_buffer, dst_ip);
+    enforcer->changes_idx += sizeof(unsigned int);
 
-    putFloat(manager.buffer_idx, manager.buffer, jitter);
-    manager.buffer_idx += sizeof(float);
+    putFloat(enforcer->changes_idx, enforcer->changes_buffer, latency);
+    enforcer->changes_idx += sizeof(float);
 
-    manager.count++;
+    putFloat(enforcer->changes_idx, enforcer->changes_buffer, jitter);
+    enforcer->changes_idx += sizeof(float);
+
+    enforcer->changes_count++;
 }
 
 

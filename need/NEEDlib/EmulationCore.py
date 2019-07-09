@@ -128,9 +128,9 @@ class EmulationCore:
 				self.comms.broadcast_flows(self.active_paths)
 				
 				with self.state_lock:
-					self.manager_lib.lock_changes()
+					# self.manager_lib.lock_changes()
 					self.apply_bandwidth()
-					self.manager_lib.publishChanges()
+					# self.manager_lib.publishChanges()
 			
 			# self.flow_accumulator.clear()		# CHANGED dont clear here
 				
@@ -190,7 +190,11 @@ class EmulationCore:
 
 			else:
 				to_delete.append(key)
-
+		
+		
+		# print_named("FAIL", f"{len(self.active_paths_ids)}")
+		
+		
 		# Now apply the RTT Aware Min-Max to calculate the new BW
 		for id in self.active_paths_ids:
 			path = self.graph.paths_by_id[id]
@@ -230,8 +234,6 @@ class EmulationCore:
 					if max_bandwidth_on_link[0] < max_bandwidth:
 						max_bandwidth = max_bandwidth_on_link[0]
 						
-						
-				print_named("FAIL", "made it here")
 				
 				if max_bandwidth <= path.max_bandwidth and max_bandwidth != path.current_bandwidth:
 					if max_bandwidth <= path.current_bandwidth:
@@ -246,7 +248,7 @@ class EmulationCore:
 					
 					
 					# FIXME
-					print_named("FAIL", f"{src_service.ip} -> {dst_service.ip}, bw {int(path.current_bandwidth/1000)}")
+					print_named("cb", f"{src_service.ip} -> {dst_service.ip}, bw {int(path.current_bandwidth/1000)}")
 					
 					# PathEmulation.change_bandwidth(service, path.current_bandwidth)
 					self.manager_lib.changeBandwidth(src_service.ip, dst_service.ip, int(path.current_bandwidth/1000))
@@ -272,10 +274,6 @@ class EmulationCore:
 		
 	def collect_own_flow(self, src_ip, dst_ip, sent_bytes, qlen):
 		
-		# FIXME
-		if dst_ip == 0:
-			return
-		
 		src_host = self.graph.hosts_by_ip[src_ip]
 		dst_host = self.graph.hosts_by_ip[dst_ip]
 		
@@ -294,20 +292,23 @@ class EmulationCore:
 			path = self.graph.paths[src_host][dst_host]
 			
 			# Check if this is an active flow
-			if throughput <= (path.max_bandwidth * EmulationCore.ERROR_MARGIN):
+			if throughput <= (path.max_bandwidth * EmulationCore.ERROR_MARGIN) / 1000:
 				path.used_bandwidth = 0
+				
+				print_message(f" FAIL {src_ip} -> {dst_ip} :: {throughput} <= {path.max_bandwidth * EmulationCore.ERROR_MARGIN}")
 				return
 			
-			# This is an active flow
-			# msg = "\n" + self.graph.root.name + "--" + host.name + ":" + str(throughput) + "\n"
-			# msg += "going through links: "
-			# for link in path.links:
-			# 	msg += link.source.name  + "--" + link.destination.name + "--"
-			# print_message(msg)
+			# This is an active flow (check flows without the dashboard)
+			msg = "\n" + src_host.name + "--" + dst_host.name + ":" + str(throughput) + "\n"
+			msg += "going through links: "
+			for link in path.links:
+				msg += link.source.name + "--" + link.destination.name + ", "
+			print_message(msg)
 			
 			path.used_bandwidth = throughput
 			self.active_paths.append(path)
 			self.active_paths_ids.append(path.id)
+			
 			
 			# # CHANGED PG alternative place to add flows
 			# self.comms.add_flow(int(throughput), [link.index for link in path.links])

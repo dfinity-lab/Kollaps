@@ -106,7 +106,8 @@ def main():
 
     emucore = EmulationCore(manager_lib, graph, scheduler)
     emucore.initialize()
-
+    sleep(5)
+    
     print_named("EmuManager", "waiting for command to start experiment...")
     sys.stdout.flush()
     sys.stderr.flush()

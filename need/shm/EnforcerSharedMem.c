@@ -95,24 +95,28 @@ void init(unsigned int ip) {
 		printAndFail("[C (enforcer)] mapping failed");
 
 
-    // get semaphore and acquire a buffer
-    if (sem_wait(semaphores.id_acquisition) == -1)
-		printAndFail("[C (enforcer)] failed sem_wait() for id_acquisition_sem");
 
-	if ((id = master->enforcer_count) >= MAX_BUFFERS)
-	    printAndFail("[C (enforcer)] no more available buffers.\n");
+//FIXME fix for the new hash map thing
+//    // get semaphore and acquire a buffer
+//    if (sem_wait(semaphores.id_acquisition) == -1)
+//		printAndFail("[C (enforcer)] failed sem_wait() for id_acquisition_sem");
+//
+//	if ((id = master->enforcer_count) >= MAX_ENFORCERS)
+//	    printAndFail("[C (enforcer)] no more available buffers.\n");
+//
+//    __atomic_add_fetch(&(master->enforcer_count), 1, __ATOMIC_RELAXED);
+////	master->enforcer_count++;
+//    enforcer(id).ip = ip;
+//
+//    // release semaphore
+//    if (sem_post(semaphores.id_acquisition) == -1)
+//		printAndFail("[C (enforcer)] failed sem_post() for id_acquisition_sem");
 
-
-    __atomic_add_fetch(&(master->enforcer_count), 1, __ATOMIC_RELAXED);
-//	master->enforcer_count++;
+    id = ip % MAX_ENFORCERS;
     enforcer(id).ip = ip;
 
-    // release semaphore
-    if (sem_post(semaphores.id_acquisition) == -1)
-		printAndFail("[C (enforcer)] failed sem_post() for id_acquisition_sem");
 
-
-    for(i = 0; i < MAX_BUFFERS; i++) {
+    for(i = 0; i < MAX_ENFORCERS; i++) {
     	snprintf(str_buffer, 64, ENFORCER_BUFFER, i);
 		if ((semaphores.enforcers[i] = sem_open(str_buffer, 0, 0, 0)) == SEM_FAILED)
 		    printAndFail("[C (manager)] failed sem_open() for enforcer_buffer_%d");
@@ -135,33 +139,38 @@ int assertCallbacks() {
 }
 
 
-void addFlow(unsigned int ip, unsigned long bandwidth, unsigned int qlen) {
+void addFlow(unsigned int dst_ip, unsigned long bandwidth, unsigned int qlen) {
 
-    if (sem_wait(semaphores.enforcers[id]) == -1)
-        printAndFail("[C (enforcer)] failed sem_wait() for enforcer_semaphore");
+//    if (sem_wait(semaphores.enforcers[id]) == -1)
+//        printAndFail("[C (enforcer)] failed sem_wait() for enforcer_semaphore");
 
-//    printf("[C (enforcer %d)] >> addFlow( %d, %d, %ld, %d )\n", id, enforcer(id).ip, ip, bandwidth, qlen);
+//    printf("[C (enforcer %d)] >> addFlow %d -> %d ( %ld, %d )\n", id, enforcer(id).ip, dst_ip, bandwidth, qlen);
 //    fflush(stdout);
 
-    putUInt32(enforcer(id).buffer_idx, enforcer(id).buffer, ip);
-    enforcer(id).buffer_idx += sizeof(unsigned int);
+    putUInt32(enforcer(id).flows_idx, enforcer(id).flows_buffer, dst_ip);
+    enforcer(id).flows_idx += sizeof(unsigned int);
 
-    putUInt64(enforcer(id).buffer_idx, enforcer(id).buffer, bandwidth);
-    enforcer(id).buffer_idx += sizeof(unsigned long);
+    putUInt64(enforcer(id).flows_idx, enforcer(id).flows_buffer, bandwidth);
+    enforcer(id).flows_idx += sizeof(unsigned long);
 
-    putUInt32(enforcer(id).buffer_idx, enforcer(id).buffer, qlen);
-    enforcer(id).buffer_idx += sizeof(unsigned int);
+    putUInt32(enforcer(id).flows_idx, enforcer(id).flows_buffer, qlen);
+    enforcer(id).flows_idx += sizeof(unsigned int);
 
-    enforcer(id).count++;
-//    __atomic_add_fetch(&(enforcer(id).count), 1, __ATOMIC_RELAXED);
+//    enforcer(id).flows_count++;
+    __atomic_add_fetch(&(enforcer(id).flows_count), 1, __ATOMIC_RELAXED);
 
-    if (sem_post(semaphores.enforcers[id]) == -1)
-        printAndFail("[C (enforcer)] failed sem_post() for enforcer_semaphore");
+//    if (sem_post(semaphores.enforcers[id]) == -1)
+//        printAndFail("[C (enforcer)] failed sem_post() for enforcer_semaphore");
 }
 
 
 void publishFlows() {
-    // currently it is the manager controlling this
+//    int aux = enforcer(id).write_buffer;
+//    enforcer(id).write_buffer = enforcer(id).read_buffer;
+//    enforcer(id).read_buffer = enforcer(id).write_buffer;
+
+//    enforcer(id).active_buffer = (enforcer(id).active_buffer + 1) % MAX_BUFFERS;
+//    __atomic_store_n(&(master->writing_in_progress), 1, __ATOMIC_RELAXED);
 }
 
 
@@ -169,43 +178,43 @@ void pullChanges() {
     unsigned int i = 0;
     unsigned int read_idx = 0;
 
-    unsigned int src_ip, dst_ip;
+    unsigned int src_ip = enforcer(id).ip, dst_ip;
     unsigned long bandwidth;
     float latency, jitter, packetLoss;
 
-    if (master->writing_in_progress) {
-        // get semaphore for buffer access
-        if (sem_wait(semaphores.read_changes) == -1)
-            printAndFail("[C (enforcer)] failed sem_wait() for read_changes_sem");
-    }
+//    if (master->writing_in_progress) {
+//        // get semaphore for buffer access
+//        if (sem_wait(semaphores.read_changes) == -1)
+//            printAndFail("[C (enforcer)] failed sem_wait() for read_changes_sem");
+//    }
 
 
-    for (i = 0; i < manager.count; i++) {
-        switch(getFunction(read_idx, manager.buffer)) {
+    for (i = 0; i < enforcer(id).changes_count; i++) {
+        switch(getFunction(read_idx, enforcer(id).changes_buffer)) {
 
             case INIT_DESTINATION :
                 read_idx += sizeof(enum function);
 
-                src_ip = getUInt32(read_idx, manager.buffer);
+//                src_ip = getUInt32(read_idx, enforcer(id).changes_buffer);
+//                read_idx += sizeof(unsigned int);
+
+                dst_ip = getUInt32(read_idx, enforcer(id).changes_buffer);
                 read_idx += sizeof(unsigned int);
 
-                dst_ip = getUInt32(read_idx, manager.buffer);
-                read_idx += sizeof(unsigned int);
-
-                bandwidth = getUInt64(read_idx, manager.buffer);
+                bandwidth = getUInt64(read_idx, enforcer(id).changes_buffer);
                 read_idx += sizeof(unsigned long);
 
-                latency = getFloat(read_idx, manager.buffer);
+                latency = getFloat(read_idx, enforcer(id).changes_buffer);
                 read_idx += sizeof(float);
 
-                jitter = getFloat(read_idx, manager.buffer);
+                jitter = getFloat(read_idx, enforcer(id).changes_buffer);
                 read_idx += sizeof(float);
 
-                packetLoss = getFloat(read_idx, manager.buffer);
+                packetLoss = getFloat(read_idx, enforcer(id).changes_buffer);
                 read_idx += sizeof(float);
 
                 if (src_ip == enforcer(id).ip) {
-                    printf("[C (enforcer %d)] >> initDestination( %d, %ld, %f, %f, %f )\n", src_ip, dst_ip, bandwidth, latency, jitter, packetLoss);
+                    printf("[C (enforcer)] >> initDestination %d -> %d ( %ld, %f, %f, %f )\n", src_ip, dst_ip, bandwidth, latency, jitter, packetLoss);
                     (*initDestinationCallback)(dst_ip, bandwidth, latency, jitter, packetLoss);
                 }
 
@@ -214,17 +223,17 @@ void pullChanges() {
             case CHANGE_BANDWIDTH :
                 read_idx += sizeof(enum function);
 
-                src_ip = getUInt32(read_idx, manager.buffer);
+//                src_ip = getUInt32(read_idx, enforcer(id).changes_buffer);
+//                read_idx += sizeof(unsigned int);
+
+                dst_ip = getUInt32(read_idx, enforcer(id).changes_buffer);
                 read_idx += sizeof(unsigned int);
 
-                dst_ip = getUInt32(read_idx, manager.buffer);
-                read_idx += sizeof(unsigned int);
-
-                bandwidth = getUInt64(read_idx, manager.buffer);
+                bandwidth = getUInt64(read_idx, enforcer(id).changes_buffer);
                 read_idx += sizeof(unsigned long);
 
                 if (src_ip == enforcer(id).ip) {
-                    printf("[C (enforcer %d)] >> changeBandwidth( %d, %ld )\n", src_ip, dst_ip, bandwidth);
+                    printf("[C (enforcer)] >> changeBandwidth %d -> %d ( %ld )\n", src_ip, dst_ip, bandwidth);
                     (*changeBandwidthCallback)(dst_ip, bandwidth);
                 }
 
@@ -233,17 +242,17 @@ void pullChanges() {
             case CHANGE_LOSS :
                 read_idx += sizeof(enum function);
 
-                src_ip = getUInt32(read_idx, manager.buffer);
+//                src_ip = getUInt32(read_idx, enforcer(id).changes_buffer);
+//                read_idx += sizeof(unsigned int);
+
+                dst_ip = getUInt32(read_idx, enforcer(id).changes_buffer);
                 read_idx += sizeof(unsigned int);
 
-                dst_ip = getUInt32(read_idx, manager.buffer);
-                read_idx += sizeof(unsigned int);
-
-                packetLoss = getFloat(read_idx, manager.buffer);
+                packetLoss = getFloat(read_idx, enforcer(id).changes_buffer);
                 read_idx += sizeof(float);
 
                 if (src_ip == enforcer(id).ip) {
-                    printf("[C (enforcer %d)] >> changeLoss( %d, %f )\n", src_ip, dst_ip, packetLoss);
+                    printf("[C (enforcer)] >> changeLoss %d -> %d ( %f )\n", src_ip, dst_ip, packetLoss);
                     (*changeLossCallback)(dst_ip, packetLoss);
                 }
 
@@ -252,20 +261,20 @@ void pullChanges() {
             case CHANGE_LATENCY :
                 read_idx += sizeof(enum function);
 
-                src_ip = getUInt32(read_idx, manager.buffer);
+//                src_ip = getUInt32(read_idx, enforcer(id).changes_buffer);
+//                read_idx += sizeof(unsigned int);
+
+                dst_ip = getUInt32(read_idx, enforcer(id).changes_buffer);
                 read_idx += sizeof(unsigned int);
 
-                dst_ip = getUInt32(read_idx, manager.buffer);
-                read_idx += sizeof(unsigned int);
-
-                latency = getFloat(read_idx, manager.buffer);
+                latency = getFloat(read_idx, enforcer(id).changes_buffer);
                 read_idx += sizeof(float);
 
-                jitter = getFloat(read_idx, manager.buffer);
+                jitter = getFloat(read_idx, enforcer(id).changes_buffer);
                 read_idx += sizeof(float);
 
                 if (src_ip == enforcer(id).ip) {
-                    printf("[C (enforcer %d)] >> changeLatency( %d, %f, %f )\n", src_ip, dst_ip, latency, jitter);
+                    printf("[C (enforcer)] >> changeLatency %d -> %d ( %f, %f )\n", src_ip, dst_ip, latency, jitter);
                     (*changeLatencyCallback)(dst_ip, latency, jitter);
                 }
 
@@ -277,6 +286,9 @@ void pullChanges() {
     }
 
     fflush(stdout);
+
+    enforcer(id).changes_count = 0;
+    enforcer(id).changes_idx = 0;
 
 //    // finished reading, release semaphore
 //    if (sem_post(semaphores.read_changes) == -1)
